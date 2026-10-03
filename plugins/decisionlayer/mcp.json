@@ -1,0 +1,10 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "decisionlayer": {
+      "type": "http",
+      "url": "https://www.decisionlayer.ai/mcp",
+      "note": "DecisionLayer's hosted MCP server. Signs you in with your DecisionLayer account (OAuth) on first use."
+    }
+  }
+}

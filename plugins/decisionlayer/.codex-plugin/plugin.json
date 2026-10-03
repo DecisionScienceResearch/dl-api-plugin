@@ -1,0 +1,42 @@
+{
+  "name": "decisionlayer",
+  "version": "0.1.0",
+  "description": "Bring a case to arbitration with DecisionLayer: file a full case or a consent case, or simulate one first.",
+  "author": {
+    "name": "DecisionLayer",
+    "url": "https://www.decisionlayer.ai"
+  },
+  "homepage": "https://www.decisionlayer.ai/api",
+  "repository": "https://github.com/DecisionScienceResearch/dl-api-plugin",
+  "license": "MIT",
+  "keywords": [
+    "arbitration",
+    "dispute-resolution",
+    "legal",
+    "decisionlayer"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./mcp.json",
+  "interface": {
+    "displayName": "DecisionLayer",
+    "shortDescription": "Bring a case to arbitration",
+    "longDescription": "File an arbitration case with DecisionLayer from a conversation. Bring a full case under a contract's arbitration clause, or a consent case that both parties agree to. Try it first with the simulator: describe both sides of a dispute and get an award back in minutes, with nothing filed. Sign in with your DecisionLayer account; nothing to configure.",
+    "developerName": "DecisionLayer",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://www.decisionlayer.ai",
+    "privacyPolicyURL": "https://www.decisionlayer.ai/privacy",
+    "termsOfServiceURL": "https://www.decisionlayer.ai/terms",
+    "defaultPrompt": [
+      "Simulate an arbitration case with DecisionLayer using the sample dispute",
+      "Help me bring a case to arbitration with DecisionLayer",
+      "Start a consent arbitration case with DecisionLayer"
+    ],
+    "composerIcon": "./assets/icon.svg",
+    "logo": "./assets/logo.svg",
+    "screenshots": []
+  }
+}

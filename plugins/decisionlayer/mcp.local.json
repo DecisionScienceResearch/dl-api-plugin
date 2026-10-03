@@ -1,0 +1,12 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "decisionlayer": {
+      "command": "node",
+      "args": ["./mcp/server.mjs"],
+      "cwd": ".",
+      "env_vars": ["DECISIONLAYER_API_KEY", "DECISIONLAYER_BASE_URL", "DECISIONLAYER_USER_ID"],
+      "note": "Developer alternative: runs the bundled server locally with an API key. Rename to mcp.json to use it."
+    }
+  }
+}

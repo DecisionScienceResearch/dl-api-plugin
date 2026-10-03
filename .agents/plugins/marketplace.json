@@ -1,0 +1,20 @@
+{
+  "name": "decisionlayer",
+  "interface": {
+    "displayName": "DecisionLayer"
+  },
+  "plugins": [
+    {
+      "name": "decisionlayer",
+      "source": {
+        "source": "local",
+        "path": "./plugins/decisionlayer"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
