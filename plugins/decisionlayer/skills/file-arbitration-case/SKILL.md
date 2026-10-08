@@ -19,6 +19,7 @@ Call `get_account`.
 
 - If it fails because the user is not authenticated, tell them to connect DecisionLayer: the plugin opens a DecisionLayer sign-in page in their browser, and they click **Allow**. Never ask for a password or API key in the chat.
 - Tell the user which account they are filing as. If the account reports `key_mode: test` (a developer running the plugin locally with a test key), say the filing is a sandbox filing that contacts nobody.
+- Filing a full case needs an approved account. If `can_file_cases` is false, say so before collecting anything: `file_case` would be refused. Consent cases and simulations do not need approval, so offer the `file-consent-case` or `simulate-arbitration-case` skill, and tell them filing access is requested by emailing casemanager@decisionlayer.ai.
 
 ## 3. Collect the case
 
@@ -56,7 +57,7 @@ Only set `claimant_affirmation` to true if the user said so in this conversation
 
 ## 5. File and explain what happens next
 
-Call `file_case`. If the call times out or fails without a clear answer, retry with the same `idempotency_key` so the case is not filed twice.
+Call `file_case`. If the call times out or fails without a clear answer, retry with the same `idempotency_key` and the same arguments so the case is not filed twice. A 409 on the retry means the first attempt is still running: wait a minute and retry again.
 
 If the tool returns validation problems, show them to the user, fix them together and file again.
 
@@ -68,11 +69,11 @@ After a **live** filing, give the user the `action_url` and explain that the cas
 
 These three steps happen on the DecisionLayer website, not here. After that, DecisionLayer notifies the respondent.
 
-After a **test** filing, explain that those steps were skipped and no one was contacted.
+After a **test** filing, explain that those steps were skipped and no one was contacted. The case is immediately waiting on the respondent's first response, and a test case stops after the third round without an award.
 
-Give the user the case ID. They can ask for the status later; use `get_case`.
+Give the user the case ID and the `view_url` of the case page. They can ask for the status later; use `get_case`, which reports the status, whose turn it is while the case is `awaiting_response`, and the next step for the user with its link.
 
 ## Limits
 
-- This plugin files cases. It does not submit later-round responses, sign, pay, or act for the respondent.
+- This plugin files cases. It does not submit later-round responses, sign, pay, read a decided award, or act for the respondent. Those are done on the DecisionLayer website, or with the REST API and an API key.
 - Do not give legal advice or predict the outcome. You may explain how DecisionLayer's process works.

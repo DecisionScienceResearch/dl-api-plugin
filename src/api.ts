@@ -51,6 +51,11 @@ export class DecisionLayerClient {
     return this.config.baseUrl;
   }
 
+  /** How this program names itself to the API, e.g. in feedback. */
+  get clientLabel(): string {
+    return `${PLUGIN_NAME}/${PLUGIN_VERSION} (${this.config.transport})`;
+  }
+
   /** Identifies the person behind the request: the configured override, else their account ID. */
   private async userId(): Promise<string | undefined> {
     if (this.config.userId) return this.config.userId;
@@ -134,7 +139,8 @@ export class DecisionLayerClient {
     return this.send<T>("GET", path, {}, undefined, await this.userId());
   }
 
-  private async postJson<T>(path: string, payload: unknown): Promise<T> {
+  /** POSTs a JSON body. */
+  async postJson<T>(path: string, payload: unknown): Promise<T> {
     return this.send<T>(
       "POST",
       path,

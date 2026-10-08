@@ -48,36 +48,97 @@ before(async () => {
       return send(401, { error: { status: 401, message: "The API key is not valid.", details: ["Check the key."] } });
     }
     const test = req.headers.authorization.startsWith("Bearer dvarb_test_");
+    const canFile = req.headers.authorization !== "Bearer dvarb_nofiling";
     switch (`${req.method} ${req.url}`) {
       case "GET /api/v1/me":
-        return send(200, ACCOUNT);
+        return send(200, { ...ACCOUNT, can_file_cases: canFile });
       case "POST /api/v1/cases":
+        if (!canFile) {
+          return send(403, { error: { status: 403, message: "Case filing is limited to approved accounts.", details: [] } });
+        }
         if (body.get("respondent_email") === "invalid") {
           return send(422, {
             error: { status: 422, message: "Your request could not be processed.", details: ["Field 'respondent_email' is not a valid email."] },
           });
         }
         return send(201, {
-          case: { id: "case_01abc", status: test ? "awaiting_response" : "awaiting_signature", test },
+          case: {
+            id: "case_01abc",
+            status: test ? "awaiting_response" : "awaiting_signature",
+            role: "claimant",
+            action_required: !test,
+            next_action: test ? null : "sign_terms",
+            action_url: test ? null : `${baseUrl}/cases/case_01abc/terms`,
+            view_url: `${baseUrl}/cases/case_01abc`,
+            test,
+          },
           action_url: `${baseUrl}/cases/case_01abc/terms`,
           dashboard_url: `${baseUrl}/dashboard`,
           message: "Case created.",
         });
+      case "GET /api/v1/cases/case_01abc":
+        return send(200, {
+          id: "case_01abc",
+          status: "awaiting_response",
+          current_turn: "respondent",
+          next_round: 1,
+          accepted_fields: ["affirmation", "argument", "evidence"],
+          role: "claimant",
+          action_required: false,
+          next_action: null,
+          action_url: null,
+          view_url: `${baseUrl}/cases/case_01abc`,
+          test: false,
+        });
+      case "GET /api/v1/cases/case_unclaimed":
+        return send(404, { error: { status: 404, message: "Not found.", details: ["Claim the case first."], reason: "not_claimed" } });
+      case "GET /api/v1/cases/case_sim1":
+        return send(404, { error: { status: 404, message: "Not found.", details: [], reason: "not_found" } });
       case "POST /api/v1/consent-cases":
         return send(201, {
-          case: { id: "creq_01abc", status: "ready_to_sign", test: false },
-          sign_url: `${baseUrl}/consent/creq_01abc/sign`,
+          case: {
+            id: "creq_01abc",
+            status: test ? "paid" : "ready_to_sign",
+            role: "claimant",
+            action_required: !test,
+            next_action: test ? null : "sign_terms",
+            action_url: test ? null : `${baseUrl}/consent/creq_01abc/sign`,
+            view_url: `${baseUrl}/consent/creq_01abc`,
+            test,
+          },
+          sign_url: test ? null : `${baseUrl}/consent/creq_01abc/sign`,
           dashboard_url: `${baseUrl}/dashboard`,
         });
       case "GET /api/v1/consent-cases/creq_01abc":
-        return send(200, { id: "creq_01abc", status: "ready_to_sign", action_required: true, next_action: "sign_terms", action_url: `${baseUrl}/sign` });
+        return send(200, {
+          id: "creq_01abc",
+          status: "ready_to_sign",
+          role: "claimant",
+          action_required: true,
+          next_action: "sign_terms",
+          action_url: `${baseUrl}/sign`,
+          view_url: `${baseUrl}/consent/creq_01abc`,
+        });
       case "POST /api/v1/simulations":
-        return send(201, { id: "case_sim1", status: "processing", page_url: `${baseUrl}/simulation/h/case_sim1` });
+        return send(201, {
+          id: "case_sim1",
+          status: "processing",
+          page_url: `${baseUrl}/simulation/h/case_sim1`,
+          result_url: null,
+          message: null,
+          created_at: "2026-10-07T16:40:03Z",
+        });
       case "GET /api/v1/simulations/case_sim1":
         simulationPolls += 1;
-        return send(200, { id: "case_sim1", status: simulationPolls > 1 ? "ready" : "processing" });
+        return send(200, { id: "case_sim1", status: simulationPolls > 1 ? "ready" : "processing", page_url: `${baseUrl}/simulation/h/case_sim1`, result_url: null, message: null });
       case "GET /api/v1/simulations/case_sim1/result":
-        return send(200, { id: "case_sim1", text: "AWARD: claimant prevails.", pdf_url: `${baseUrl}/d/xyz/`, page_url: `${baseUrl}/simulation/h/case_sim1` });
+        return send(200, { id: "case_sim1", case_id: "case_sim1", text: "AWARD: claimant prevails.", published_at: "2026-10-07T16:43:51Z", pdf_url: `${baseUrl}/d/xyz/`, page_url: `${baseUrl}/simulation/h/case_sim1` });
+      case "GET /api/v1/simulations/case_sim2":
+        return send(200, { id: "case_sim2", status: "ready", page_url: `${baseUrl}/simulation/h/case_sim2`, result_url: null, message: null });
+      case "GET /api/v1/simulations/case_sim2/result":
+        return send(200, { id: "case_sim2", case_id: "case_sim2", text: "AWARD: respondent prevails.", published_at: "2026-08-01T00:00:00Z", pdf_url: null, page_url: `${baseUrl}/simulation/h/case_sim2` });
+      case "POST /api/v1/feedback":
+        return send(201, { id: "fb_01abc", received_at: "2026-10-08T12:00:00Z", message: "Thanks, we received your feedback." });
       default:
         return send(404, { error: { status: 404, message: "Not found.", details: [], reason: "not_found" } });
     }
@@ -146,7 +207,7 @@ test("lists the tools", async () => {
   await client.close();
   assert.deepEqual(
     tools.map((tool) => tool.name).sort(),
-    ["file_case", "file_consent_case", "get_account", "get_case", "get_simulation", "run_simulation"],
+    ["file_case", "file_consent_case", "get_account", "get_case", "get_simulation", "run_simulation", "send_feedback"],
   );
 });
 
@@ -155,6 +216,15 @@ test("get_account reports the account and key mode", async () => {
   assert.equal(result.isError, undefined);
   assert.equal(result.structuredContent.key_mode, "test");
   assert.equal(result.structuredContent.account.email, "sam@example.com");
+  assert.match(result.content[0].text, /may file full cases/);
+});
+
+test("get_account says when the account is not approved to file full cases", async () => {
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_nofiling" }, "get_account");
+  assert.equal(result.isError, undefined);
+  assert.equal(result.structuredContent.account.can_file_cases, false);
+  assert.match(result.content[0].text, /not yet approved to file full cases/);
+  assert.match(result.content[0].text, /casemanager@decisionlayer\.ai/);
 });
 
 test("every API request identifies the plugin and the user", async () => {
@@ -219,6 +289,15 @@ test("file_case refuses to file without the user's affirmation", async () => {
 test("file_case reports a test filing as a sandbox case", async () => {
   const result = await call({ DECISIONLAYER_API_KEY: "dvarb_test_abc" }, "file_case", CASE);
   assert.match(result.content[0].text, /^Test case case_01abc filed/);
+  assert.match(result.content[0].text, /waiting on the respondent/);
+});
+
+test("file_case explains a 403 from an account that may not file", async () => {
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_nofiling" }, "file_case", CASE);
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /DecisionLayer error 403/);
+  assert.match(result.content[0].text, /approved account/);
+  assert.match(result.content[0].text, /casemanager@decisionlayer\.ai/);
 });
 
 test("API validation errors are passed through with their details", async () => {
@@ -253,6 +332,26 @@ test("file_consent_case creates a consent case and returns the sign link", async
 test("get_case routes creq_ IDs to the consent endpoint", async () => {
   const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "get_case", { case_id: "creq_01abc" });
   assert.match(result.content[0].text, /ready_to_sign.*sign_terms/);
+  assert.match(result.content[0].text, /Case page: .*\/consent\/creq_01abc/);
+});
+
+test("get_case says whose turn it is on a case awaiting a response", async () => {
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "get_case", { case_id: "case_01abc" });
+  assert.equal(result.isError, undefined);
+  assert.match(result.content[0].text, /case_01abc is awaiting_response and the user is the claimant/);
+  assert.match(result.content[0].text, /respondent's turn \(round 1\)/);
+  assert.match(result.content[0].text, /Nothing is required from the user/);
+  assert.equal(result.structuredContent.current_turn, "respondent");
+});
+
+test("get_case explains the API's reason for a 404", async () => {
+  const unclaimed = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "get_case", { case_id: "case_unclaimed" });
+  assert.equal(unclaimed.isError, true);
+  assert.match(unclaimed.content[0].text, /has not claimed this case yet/);
+
+  const simulation = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "get_case", { case_id: "case_sim1" });
+  assert.equal(simulation.isError, true);
+  assert.match(simulation.content[0].text, /use get_simulation/);
 });
 
 test("run_simulation with a test key is stopped with guidance", async () => {
@@ -290,6 +389,60 @@ test("run_simulation then get_simulation returns the award", async () => {
   await client.close();
   assert.equal(award.structuredContent.status, "ready");
   assert.match(award.structuredContent.text, /claimant prevails/);
+  assert.match(award.content[0].text, /Award PDF \(public for 30 days\): .*\/d\/xyz\//);
+});
+
+test("run_simulation sends the respondent's email and rebuttal evidence", async () => {
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "run_simulation", {
+    question_for_arbitration: "Q",
+    plaintiff_name: "Sam Rivera",
+    respondent_name: "Jordan Chen",
+    respondent_email: "jordan@example.com",
+    plaintiff_argument: "A",
+    respondent_argument: "B",
+    plaintiff_rebuttal: "A2",
+    respondent_rebuttal: "B2",
+    governing_contract: "Contract text",
+    plaintiff_documents: [{ text: "Receipt" }],
+    plaintiff_rebuttal_documents: [{ text: "Photo log" }],
+    respondent_rebuttal_documents: [{ text: "Invoice" }, { text: "Email" }],
+  });
+  assert.equal(result.isError, undefined);
+  const form = apiCalls()[0].body;
+  assert.equal(form.get("respondent_email"), "jordan@example.com");
+  assert.equal(form.get("plaintiff_rebuttal"), "A2");
+  assert.deepEqual(form.getAll("plaintiff_documents").map((file) => file.name), ["plaintiff_documents.txt"]);
+  assert.deepEqual(form.getAll("plaintiff_rebuttal_documents").map((file) => file.name), ["plaintiff_rebuttal_documents.txt"]);
+  assert.deepEqual(
+    form.getAll("respondent_rebuttal_documents").map((file) => file.name),
+    ["respondent_rebuttal_documents_1.txt", "respondent_rebuttal_documents_2.txt"],
+  );
+});
+
+test("get_simulation still returns the award text after the public PDF expires", async () => {
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "get_simulation", { simulation_id: "case_sim2", wait_seconds: 0 });
+  assert.equal(result.isError, undefined);
+  assert.match(result.content[0].text, /public PDF link has expired/);
+  assert.match(result.structuredContent.text, /respondent prevails/);
+  assert.equal(result.structuredContent.pdf_url, null);
+});
+
+test("send_feedback posts a note that names the plugin", async () => {
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "send_feedback", {
+    message: "file_case rejected a .docx contract that opens fine in Word.",
+    category: "bug",
+    case_id: "CASE_01ABC",
+  });
+  assert.equal(result.isError, undefined);
+  assert.match(result.content[0].text, /^Feedback fb_01abc was sent/);
+  const [request] = apiCalls();
+  assert.equal(request.path, "/api/v1/feedback");
+  assert.match(request.headers["content-type"], /^application\/json/);
+  const body = JSON.parse(request.body);
+  assert.equal(body.message, "file_case rejected a .docx contract that opens fine in Word.");
+  assert.equal(body.category, "bug");
+  assert.equal(body.case_id, "case_01abc");
+  assert.match(body.client, /^decisionlayer-chatgpt-plugin\/\d.* \(stdio\)$/);
 });
 
 test("a missing key explains how to set one up", async () => {
@@ -313,12 +466,30 @@ test("an invalid key is reported clearly", async () => {
   assert.match(result.content[0].text, /DecisionLayer error 401/);
 });
 
-test("the two plugin manifests stay in sync", () => {
+test("the plugin manifests stay in sync", () => {
   const root = new URL("../plugins/decisionlayer/", import.meta.url);
   const portable = JSON.parse(readFileSync(new URL("plugin.json", root)));
   const legacy = JSON.parse(readFileSync(new URL(".codex-plugin/plugin.json", root)));
+  const claude = JSON.parse(readFileSync(new URL(".claude-plugin/plugin.json", root)));
   const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url)));
-  for (const field of ["name", "version", "description"]) assert.equal(legacy[field], portable[field], field);
+  for (const field of ["name", "version", "description"]) {
+    assert.equal(legacy[field], portable[field], field);
+    assert.equal(claude[field], portable[field], `claude ${field}`);
+  }
   assert.equal(portable.version, pkg.version);
   assert.deepEqual(legacy.interface, portable.extensions["com.openai"].interface);
+});
+
+test("every client configuration points at the same hosted server", () => {
+  const root = new URL("../", import.meta.url);
+  const read = (path) => JSON.parse(readFileSync(new URL(path, root)));
+  const hosted = read("plugins/decisionlayer/mcp.json").mcpServers.decisionlayer.url;
+  assert.match(hosted, /^https:\/\/www\.decisionlayer\.ai\/mcp$/);
+  assert.equal(read("plugins/decisionlayer/.mcp.json").mcpServers.decisionlayer.url, hosted);
+  assert.equal(read("clients/claude-code/.mcp.json").mcpServers.decisionlayer.url, hosted);
+  assert.equal(read("clients/cursor/mcp.json").mcpServers.decisionlayer.url, hosted);
+  assert.equal(read("clients/vscode/mcp.json").servers.decisionlayer.url, hosted);
+  assert.equal(read("clients/claude-desktop/claude_desktop_config.json").mcpServers.decisionlayer.args.at(-1), hosted);
+  const marketplace = read(".claude-plugin/marketplace.json");
+  assert.equal(marketplace.plugins[0].source, "./plugins/decisionlayer");
 });

@@ -1,0 +1,15 @@
+{
+  "name": "decisionlayer",
+  "description": "DecisionLayer arbitration tools: file a case, file a consent case, or simulate one, through DecisionLayer's hosted MCP server.",
+  "owner": {
+    "name": "DecisionLayer",
+    "url": "https://www.decisionlayer.ai"
+  },
+  "plugins": [
+    {
+      "name": "decisionlayer",
+      "source": "./plugins/decisionlayer",
+      "description": "Bring a case to arbitration with DecisionLayer: file a full case or a consent case, or simulate one first."
+    }
+  ]
+}

@@ -39,7 +39,7 @@ Show a summary: both parties, the question, the amount, and any files. Say plain
 
 ## 4. File and explain what happens next
 
-Call `file_consent_case`. If the call times out or fails without a clear answer, retry with the same `idempotency_key`.
+Call `file_consent_case`. If the call times out or fails without a clear answer, retry with the same `idempotency_key` and the same arguments. A 409 on the retry means the first attempt is still running: wait a minute and retry again.
 
 After a **live** filing, give the user the `sign_url` and explain:
 
@@ -47,9 +47,9 @@ After a **live** filing, give the user the `sign_url` and explain:
 2. DecisionLayer then emails the other party an invitation.
 3. The case goes ahead only if the other party accepts and signs.
 
-After a **test** filing, explain that signing and payment were skipped and no email was sent.
+After a **test** filing, the case comes back with status `paid` and no `sign_url`: signing and payment were recorded for the user and no email was sent.
 
-Give the user the case ID (it starts with `creq_`). Use `get_case` if they ask for the status later.
+Give the user the case ID (it starts with `creq_`) and the `view_url` of the case page. Use `get_case` if they ask for the status later. `fully_executed` is the final status, reached once both parties have signed; a consent case keeps its `creq_` ID and does not turn into a `case_` case.
 
 ## Limits
 

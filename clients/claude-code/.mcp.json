@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "decisionlayer": {
+      "type": "http",
+      "url": "https://www.decisionlayer.ai/mcp"
+    }
+  }
+}
