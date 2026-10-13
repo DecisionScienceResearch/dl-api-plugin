@@ -405,6 +405,18 @@ test("a file without an extension is typed from mime_type, then its leading byte
   assert.equal(contract.type, "text/plain");
 });
 
+test("a file name passed as file_id names the file; a ChatGPT file ID does not", async () => {
+  const { contract_text, ...rest } = CASE;
+  const opaque = tempFile("123", "Plain text with no telling bytes");
+  await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", { ...rest, contract_file: { path: opaque, file_id: "contract.txt" } });
+  assert.equal(apiCalls()[0].body.get("contract_file").name, "contract.txt");
+
+  requests = [];
+  const sniffed = tempFile("lease", "%PDF-1.4 fake");
+  await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", { ...rest, contract_file: { path: sniffed, file_id: "file-abc123" } });
+  assert.equal(apiCalls()[0].body.get("contract_file").name, "lease.pdf");
+});
+
 test("file_case rejects unsupported file types before calling the API", async () => {
   const path = tempFile("lease.exe", "x");
   const { contract_text, ...rest } = CASE;

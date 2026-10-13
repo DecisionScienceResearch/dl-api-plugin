@@ -210,7 +210,12 @@ function fetchOnce(url: URL, label: string, budget: AttachmentBudget): Promise<H
       };
       if (status >= 300 && status < 400 && res.headers.location) {
         res.resume();
-        return done({ redirect: new URL(res.headers.location, url) });
+        // Thrown here, a bad Location would escape the promise and end the server.
+        try {
+          return done({ redirect: new URL(res.headers.location, url) });
+        } catch {
+          return failed(new InputError(`${label}: download_url redirected to an invalid URL.`));
+        }
       }
       if (status >= 400) {
         res.resume();
@@ -306,7 +311,11 @@ function typedFilename(
   allowed: string[],
   defaultName: string,
 ): string {
-  const name = (input.file_name || found.name).trim();
+  // Clients other than ChatGPT may pass the file's name as file_id. ChatGPT's
+  // IDs carry no extension, so file_id counts only when it has an accepted one.
+  const fileId = (input.file_id ?? "").trim();
+  const namedById = allowed.includes(extname(fileId).toLowerCase()) ? fileId : "";
+  const name = (input.file_name || namedById || found.name).trim();
   if (allowed.includes(extname(name).toLowerCase())) return name;
   for (const extension of [
     MEDIA_TYPE_EXTENSIONS[mediaType(input.mime_type)],

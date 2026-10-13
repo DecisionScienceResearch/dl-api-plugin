@@ -36740,7 +36740,11 @@ function fetchOnce(url2, label, budget) {
       };
       if (status >= 300 && status < 400 && res.headers.location) {
         res.resume();
-        return done({ redirect: new URL(res.headers.location, url2) });
+        try {
+          return done({ redirect: new URL(res.headers.location, url2) });
+        } catch {
+          return failed(new InputError(`${label}: download_url redirected to an invalid URL.`));
+        }
       }
       if (status >= 400) {
         res.resume();
@@ -36819,7 +36823,9 @@ function sniffExtension(bytes) {
   return "";
 }
 function typedFilename(input2, found, allowed, defaultName) {
-  const name = (input2.file_name || found.name).trim();
+  const fileId = (input2.file_id ?? "").trim();
+  const namedById = allowed.includes(extname(fileId).toLowerCase()) ? fileId : "";
+  const name = (input2.file_name || namedById || found.name).trim();
   if (allowed.includes(extname(name).toLowerCase())) return name;
   for (const extension of [
     MEDIA_TYPE_EXTENSIONS[mediaType(input2.mime_type)],
