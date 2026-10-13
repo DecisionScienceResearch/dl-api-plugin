@@ -80,23 +80,36 @@ The plugin points at DecisionLayer's hosted MCP server, `https://www.decisionlay
 | `/oauth/token` | Code exchange with PKCE, and refresh |
 | `/oauth/revoke` | Token revocation |
 
-Clicking **Allow** creates a *grant* for your account and that app. Access tokens last an hour, refresh tokens thirty days (rotated on use), and every token dies with its grant. Each MCP tool calls the public DecisionLayer API as you, so a case filed from ChatGPT is identical to one filed with an API key: it is owned by your account, carries an idempotency key, and goes through the same validation. The idempotency key is scoped to the account: a retry with the same key and the same arguments replays the first result, a retry while the first attempt is still running is a 409 for about a minute, and the same key with different arguments is refused.
+Clicking **Allow** creates a *grant* for your account and that app. Access tokens last an hour, refresh tokens thirty days (rotated on use), and every token dies with its grant. Each MCP tool calls the public DecisionLayer API as you, so a case filed from ChatGPT is identical to one filed with an API key: it is owned by your account and goes through the same validation, approvals and monthly limits.
 
-The seven tools:
+The eight tools:
 
-| Tool | What it does |
-| --- | --- |
-| `get_account` | Reports which account is connected (`GET /api/v1/me`) |
-| `file_case` | Files a full case (`POST /api/v1/cases`) |
-| `file_consent_case` | Files a consent case (`POST /api/v1/consent-cases`) |
-| `get_case` | Reports a case's status, whose turn it is, and the next step with its link (`GET /api/v1/cases/{id}` or `/consent-cases/{id}`) |
-| `run_simulation` | Starts a simulation (`POST /api/v1/simulations`) |
-| `get_simulation` | Waits for a simulation and returns the award (`GET /api/v1/simulations/{id}` and `/result`) |
-| `send_feedback` | Sends a note to the DecisionLayer team, for example when a tool call failed (`POST /api/v1/feedback`) |
+| Tool | What it does | Returns |
+| --- | --- | --- |
+| `get_account` | Reports which account is connected and whether it may file full cases (`GET /api/v1/me`) | `name`, `email`, `can_file_cases`, `dashboard_url` |
+| `get_profile` | Identifies the connected account, so a client such as ChatGPT can tell accounts apart (`GET /api/v1/me`) | `id`, `name`, `email` |
+| `file_case` | Files a full case (`POST /api/v1/cases`) | `id`, `status`, `action_url`, `dashboard_url` |
+| `file_consent_case` | Files a consent case (`POST /api/v1/consent-cases`) | `id`, `status`, `action_url`, `dashboard_url` |
+| `get_case` | Reports a case's status, whose turn it is, and the next step with its link (`GET /api/v1/cases/{id}` or `/consent-cases/{id}`) | `status`, `role`, `current_turn`, `action_required`, `next_action`, `action_url`, `view_url`, and the question, amount and respondent |
+| `run_simulation` | Starts a simulation (`POST /api/v1/simulations`) | `id`, `status`, `page_url` |
+| `get_simulation` | Waits up to `wait_seconds` (default 30, at most 50) for a simulation and returns the award (`GET /api/v1/simulations/{id}` and `/result`) | `status`, `page_url`, and once ready the award `text` and, for 30 days, `pdf_url` |
+| `send_feedback` | Sends a note to the DecisionLayer team, for example when a tool call failed. The assistant shows you the note and sends it only if you agree (`POST /api/v1/feedback`) | An `fb_` ID |
 
-Signing, payment and identity verification have no tool. When a filing needs one of them, the tool result carries the web link (`action_url` for a case, `sign_url` for a consent case) and the assistant hands it to the user.
+Each tool declares its result as an `outputSchema` and returns only the IDs, statuses and links the next step needs; the REST API returns the full objects. `file_case`, `file_consent_case` and `run_simulation` are annotated as destructive, because a filing reaches the other party once you sign and pay and a simulation award is published, so clients that honour annotations ask you before running them.
 
-Documents can be attached in the chat, given as an HTTPS link, or pasted as text. Contracts may be `.pdf`, `.docx`, `.rtf` or `.txt`; evidence may also be `.jpg`, `.jpeg`, `.png`, `.mp4`, `.mov` or `.avi`. Each file can be up to 100 MiB.
+Those three tools also require an `idempotency_key`, sent as the API's `Idempotency-Key`. The assistant picks a new value for each request and sends the same value when it retries one that failed or timed out, so the retry returns the first result instead of filing again. If the first attempt is still running, the tool says to wait a minute and retry with the same key. If the key was already used with different arguments, the tool says the first attempt may have gone through and asks you to check your dashboard before filing with a new key. A retry that includes a file of 8 MiB or more always ends that way, because the file is uploaded again.
+
+Signing, payment and identity verification have no tool. When a filing needs one of them, the tool result carries the web link (`action_url`, for both kinds of case) and the assistant hands it to you.
+
+Documents attached in the chat or given as an HTTPS link are passed as a file object: `download_url` and `file_id` are required (ChatGPT fills them in for attachments; other clients may pass the file name as `file_id`), `file_name` and `mime_type` are optional. When neither the name nor the URL has an accepted extension, the type comes from `mime_type`, then the download's `Content-Type`, then the file's first bytes. Text you paste goes in the tool's text argument instead and is sent as a `.txt` file:
+
+| Tool | File arguments | Text arguments |
+| --- | --- | --- |
+| `file_case` | `contract_file`, `evidence` | `contract_text`, `evidence_text` |
+| `file_consent_case` | `contract_files`, `supporting_documents` | `contract_text`, `supporting_text` |
+| `run_simulation` | `contract_file`, `plaintiff_documents`, `respondent_documents`, `plaintiff_rebuttal_documents`, `respondent_rebuttal_documents` | `governing_contract`, and the arguments and rebuttals themselves |
+
+Contracts may be `.pdf`, `.docx`, `.rtf` or `.txt`; evidence may also be `.jpg`, `.jpeg`, `.png`, `.mp4`, `.mov` or `.avi`. Each file can be up to 100 MiB, and one tool call takes at most 10 files, 256 MiB in total. Downloads reach only public addresses.
 
 Three skills guide the conversation: `file-arbitration-case`, `file-consent-case` and `simulate-arbitration-case`.
 
@@ -104,7 +117,7 @@ The server side (authorization server, consent page, MCP endpoint and tools) is 
 
 ## Running the tools locally with an API key
 
-For development, this repository also contains a small stdio MCP server (`src/`, bundled to `plugins/decisionlayer/mcp/server.mjs`) that offers the same seven tools against the public API with an API key instead of a sign-in. It is not what the plugin installs by default.
+For development, this repository also contains a small stdio MCP server (`src/`, bundled to `plugins/decisionlayer/mcp/server.mjs`) that offers the same eight tools, with the same arguments and results, against the public API with an API key instead of a sign-in. It is not what the plugin installs by default.
 
 1. Create a key at `https://www.decisionlayer.ai/settings/api-keys` (or a sandbox test key at `/settings/test-api-keys`; test filings skip signing and payment, contact nobody, and never produce an award, and test keys cannot run simulations).
 2. Save it: `export DECISIONLAYER_API_KEY=dvarb_...`, or write it to `~/.config/decisionlayer/api_key`.
@@ -117,7 +130,7 @@ For development, this repository also contains a small stdio MCP server (`src/`,
 | `DECISIONLAYER_BASE_URL` | `https://www.decisionlayer.ai` | The DecisionLayer environment, e.g. `https://staging.decisionlayer.ai` |
 | `DECISIONLAYER_USER_ID` | your account ID | The value sent in `X-DecisionLayer-User` |
 
-In local mode files can also be given as a path on your computer. Every request identifies itself with `X-DecisionLayer-Client`, `X-DecisionLayer-User` and a matching `User-Agent`; the hosted server does the same.
+In local mode a file object may give `path`, a file on your computer, instead of `download_url`, and `get_account` also reports `key_mode` (`live` or `test`). Every request identifies itself with `X-DecisionLayer-Client`, `X-DecisionLayer-User` and a matching `User-Agent`; the hosted server does the same.
 
 ## Development
 

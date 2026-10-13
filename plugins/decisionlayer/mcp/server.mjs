@@ -28247,17 +28247,17 @@ var CompleteRequestSchema = RequestSchema.extend({
   method: literal("completion/complete"),
   params: CompleteRequestParamsSchema
 });
-function assertCompleteRequestPrompt(request) {
-  if (request.params.ref.type !== "ref/prompt") {
-    throw new TypeError(`Expected CompleteRequestPrompt, but got ${request.params.ref.type}`);
+function assertCompleteRequestPrompt(request2) {
+  if (request2.params.ref.type !== "ref/prompt") {
+    throw new TypeError(`Expected CompleteRequestPrompt, but got ${request2.params.ref.type}`);
   }
-  void request;
+  void request2;
 }
-function assertCompleteRequestResourceTemplate(request) {
-  if (request.params.ref.type !== "ref/resource") {
-    throw new TypeError(`Expected CompleteRequestResourceTemplate, but got ${request.params.ref.type}`);
+function assertCompleteRequestResourceTemplate(request2) {
+  if (request2.params.ref.type !== "ref/resource") {
+    throw new TypeError(`Expected CompleteRequestResourceTemplate, but got ${request2.params.ref.type}`);
   }
-  void request;
+  void request2;
 }
 var CompleteResultSchema = ResultSchema.extend({
   completion: looseObject({
@@ -28513,7 +28513,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 var PLUGIN_NAME = "decisionlayer-chatgpt-plugin";
-var PLUGIN_VERSION = "0.1.0";
+var PLUGIN_VERSION = "0.2.0";
 var DEFAULT_BASE_URL = "https://www.decisionlayer.ai";
 var KEY_FILE = join(homedir(), ".config", "decisionlayer", "api_key");
 var KEYS_PAGE_PATH = "/settings/api-keys";
@@ -34037,8 +34037,8 @@ var Protocol = class {
     this._taskStore = _options?.taskStore;
     this._taskMessageQueue = _options?.taskMessageQueue;
     if (this._taskStore) {
-      this.setRequestHandler(GetTaskRequestSchema, async (request, extra) => {
-        const task = await this._taskStore.getTask(request.params.taskId, extra.sessionId);
+      this.setRequestHandler(GetTaskRequestSchema, async (request2, extra) => {
+        const task = await this._taskStore.getTask(request2.params.taskId, extra.sessionId);
         if (!task) {
           throw new McpError(ErrorCode.InvalidParams, "Failed to retrieve task: Task not found");
         }
@@ -34046,9 +34046,9 @@ var Protocol = class {
           ...task
         };
       });
-      this.setRequestHandler(GetTaskPayloadRequestSchema, async (request, extra) => {
+      this.setRequestHandler(GetTaskPayloadRequestSchema, async (request2, extra) => {
         const handleTaskResult = async () => {
-          const taskId = request.params.taskId;
+          const taskId = request2.params.taskId;
           if (!await this._taskStore.getTask(taskId, extra.sessionId)) {
             throw new McpError(ErrorCode.InvalidParams, `Task not found: ${taskId}`);
           }
@@ -34102,9 +34102,9 @@ var Protocol = class {
         };
         return await handleTaskResult();
       });
-      this.setRequestHandler(ListTasksRequestSchema, async (request, extra) => {
+      this.setRequestHandler(ListTasksRequestSchema, async (request2, extra) => {
         try {
-          const { tasks, nextCursor } = await this._taskStore.listTasks(request.params?.cursor, extra.sessionId);
+          const { tasks, nextCursor } = await this._taskStore.listTasks(request2.params?.cursor, extra.sessionId);
           return {
             tasks,
             nextCursor,
@@ -34114,20 +34114,20 @@ var Protocol = class {
           throw new McpError(ErrorCode.InvalidParams, `Failed to list tasks: ${error62 instanceof Error ? error62.message : String(error62)}`);
         }
       });
-      this.setRequestHandler(CancelTaskRequestSchema, async (request, extra) => {
+      this.setRequestHandler(CancelTaskRequestSchema, async (request2, extra) => {
         try {
-          const task = await this._taskStore.getTask(request.params.taskId, extra.sessionId);
+          const task = await this._taskStore.getTask(request2.params.taskId, extra.sessionId);
           if (!task) {
-            throw new McpError(ErrorCode.InvalidParams, `Task not found: ${request.params.taskId}`);
+            throw new McpError(ErrorCode.InvalidParams, `Task not found: ${request2.params.taskId}`);
           }
           if (isTerminal(task.status)) {
             throw new McpError(ErrorCode.InvalidParams, `Cannot cancel task in terminal status: ${task.status}`);
           }
-          await this._taskStore.updateTaskStatus(request.params.taskId, "cancelled", "Client cancelled task execution.", extra.sessionId);
-          this._clearTaskQueue(request.params.taskId, extra.sessionId);
-          const cancelledTask = await this._taskStore.getTask(request.params.taskId, extra.sessionId);
+          await this._taskStore.updateTaskStatus(request2.params.taskId, "cancelled", "Client cancelled task execution.", extra.sessionId);
+          this._clearTaskQueue(request2.params.taskId, extra.sessionId);
+          const cancelledTask = await this._taskStore.getTask(request2.params.taskId, extra.sessionId);
           if (!cancelledTask) {
-            throw new McpError(ErrorCode.InvalidParams, `Task not found after cancellation: ${request.params.taskId}`);
+            throw new McpError(ErrorCode.InvalidParams, `Task not found after cancellation: ${request2.params.taskId}`);
           }
           return {
             _meta: {},
@@ -34248,10 +34248,10 @@ var Protocol = class {
     }
     Promise.resolve().then(() => handler(notification)).catch((error62) => this._onerror(new Error(`Uncaught error in notification handler: ${error62}`)));
   }
-  _onrequest(request, extra) {
-    const handler = this._requestHandlers.get(request.method) ?? this.fallbackRequestHandler;
+  _onrequest(request2, extra) {
+    const handler = this._requestHandlers.get(request2.method) ?? this.fallbackRequestHandler;
     const capturedTransport = this._transport;
-    const relatedTaskId = request.params?._meta?.[RELATED_TASK_META_KEY]?.taskId;
+    const relatedTaskId = request2.params?._meta?.[RELATED_TASK_META_KEY]?.taskId;
     const sessionId = capturedTransport?.sessionId;
     const store = this._taskStore;
     let relatedTaskFound = true;
@@ -34268,7 +34268,7 @@ var Protocol = class {
     if (handler === void 0) {
       const errorResponse = {
         jsonrpc: "2.0",
-        id: request.id,
+        id: request2.id,
         error: {
           code: ErrorCode.MethodNotFound,
           message: "Method not found"
@@ -34289,17 +34289,17 @@ var Protocol = class {
       return;
     }
     const abortController = new AbortController();
-    this._requestHandlerAbortControllers.set(request.id, abortController);
-    const taskCreationParams = isTaskAugmentedRequestParams(request.params) ? request.params.task : void 0;
-    const taskStore = this._taskStore ? this.requestTaskStore(request, capturedTransport?.sessionId) : void 0;
+    this._requestHandlerAbortControllers.set(request2.id, abortController);
+    const taskCreationParams = isTaskAugmentedRequestParams(request2.params) ? request2.params.task : void 0;
+    const taskStore = this._taskStore ? this.requestTaskStore(request2, capturedTransport?.sessionId) : void 0;
     const fullExtra = {
       signal: abortController.signal,
       sessionId: capturedTransport?.sessionId,
-      _meta: request.params?._meta,
+      _meta: request2.params?._meta,
       sendNotification: async (notification) => {
         if (abortController.signal.aborted)
           return;
-        const notificationOptions = { relatedRequestId: request.id };
+        const notificationOptions = { relatedRequestId: request2.id };
         if (relatedTaskId) {
           notificationOptions.relatedTask = { taskId: relatedTaskId };
         }
@@ -34309,7 +34309,7 @@ var Protocol = class {
         if (abortController.signal.aborted) {
           throw new McpError(ErrorCode.ConnectionClosed, "Request was cancelled");
         }
-        const requestOptions = { ...options, relatedRequestId: request.id };
+        const requestOptions = { ...options, relatedRequestId: request2.id };
         if (relatedTaskId && !requestOptions.relatedTask) {
           requestOptions.relatedTask = { taskId: relatedTaskId };
         }
@@ -34320,7 +34320,7 @@ var Protocol = class {
         return await this.request(r, resultSchema, requestOptions);
       },
       authInfo: extra?.authInfo,
-      requestId: request.id,
+      requestId: request2.id,
       requestInfo: extra?.requestInfo,
       taskId: relatedTaskId,
       taskStore,
@@ -34333,16 +34333,16 @@ var Protocol = class {
         throw new McpError(ErrorCode.ConnectionClosed, "Request was cancelled");
       }
       if (taskCreationParams) {
-        this.assertTaskHandlerCapability(request.method);
+        this.assertTaskHandlerCapability(request2.method);
       }
-    }).then(() => handler(request, fullExtra)).then(async (result) => {
+    }).then(() => handler(request2, fullExtra)).then(async (result) => {
       if (abortController.signal.aborted) {
         return;
       }
       const response = {
         result,
         jsonrpc: "2.0",
-        id: request.id
+        id: request2.id
       };
       if (relatedTaskId && this._taskMessageQueue) {
         await this._enqueueTaskMessage(relatedTaskId, {
@@ -34359,7 +34359,7 @@ var Protocol = class {
       }
       const errorResponse = {
         jsonrpc: "2.0",
-        id: request.id,
+        id: request2.id,
         error: {
           code: Number.isSafeInteger(error62["code"]) ? error62["code"] : ErrorCode.InternalError,
           message: error62.message ?? "Internal error",
@@ -34376,8 +34376,8 @@ var Protocol = class {
         await capturedTransport?.send(errorResponse);
       }
     }).catch((error62) => this._onerror(new Error(`Failed to send response: ${error62}`))).finally(() => {
-      if (this._requestHandlerAbortControllers.get(request.id) === abortController) {
-        this._requestHandlerAbortControllers.delete(request.id);
+      if (this._requestHandlerAbortControllers.get(request2.id) === abortController) {
+        this._requestHandlerAbortControllers.delete(request2.id);
       }
     });
   }
@@ -34481,11 +34481,11 @@ var Protocol = class {
    *
    * @experimental Use `client.experimental.tasks.requestStream()` to access this method.
    */
-  async *requestStream(request, resultSchema, options) {
+  async *requestStream(request2, resultSchema, options) {
     const { task } = options ?? {};
     if (!task) {
       try {
-        const result = await this.request(request, resultSchema, options);
+        const result = await this.request(request2, resultSchema, options);
         yield { type: "result", result };
       } catch (error62) {
         yield {
@@ -34497,7 +34497,7 @@ var Protocol = class {
     }
     let taskId;
     try {
-      const createResult = await this.request(request, CreateTaskResultSchema, options);
+      const createResult = await this.request(request2, CreateTaskResultSchema, options);
       if (createResult.task) {
         taskId = createResult.task.taskId;
         yield { type: "taskCreated", task: createResult.task };
@@ -34545,7 +34545,7 @@ var Protocol = class {
    *
    * Do not use this method to emit notifications! Use notification() instead.
    */
-  request(request, resultSchema, options) {
+  request(request2, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
     return new Promise((resolve2, reject) => {
       const earlyReject = (error62) => {
@@ -34557,9 +34557,9 @@ var Protocol = class {
       }
       if (this._options?.enforceStrictCapabilities === true) {
         try {
-          this.assertCapabilityForMethod(request.method);
+          this.assertCapabilityForMethod(request2.method);
           if (task) {
-            this.assertTaskCapability(request.method);
+            this.assertTaskCapability(request2.method);
           }
         } catch (e) {
           earlyReject(e);
@@ -34569,16 +34569,16 @@ var Protocol = class {
       options?.signal?.throwIfAborted();
       const messageId = this._requestMessageId++;
       const jsonrpcRequest = {
-        ...request,
+        ...request2,
         jsonrpc: "2.0",
         id: messageId
       };
       if (options?.onprogress) {
         this._progressHandlers.set(messageId, options.onprogress);
         jsonrpcRequest.params = {
-          ...request.params,
+          ...request2.params,
           _meta: {
-            ...request.params?._meta || {},
+            ...request2.params?._meta || {},
             progressToken: messageId
           }
         };
@@ -34782,8 +34782,8 @@ var Protocol = class {
   setRequestHandler(requestSchema, handler) {
     const method = getMethodLiteral(requestSchema);
     this.assertRequestHandlerCapability(method);
-    this._requestHandlers.set(method, (request, extra) => {
-      const parsed = parseWithCompat(requestSchema, request);
+    this._requestHandlers.set(method, (request2, extra) => {
+      const parsed = parseWithCompat(requestSchema, request2);
       return Promise.resolve(handler(parsed, extra));
     });
   }
@@ -34899,19 +34899,19 @@ var Protocol = class {
       }, { once: true });
     });
   }
-  requestTaskStore(request, sessionId) {
+  requestTaskStore(request2, sessionId) {
     const taskStore = this._taskStore;
     if (!taskStore) {
       throw new Error("No task store configured");
     }
     return {
       createTask: async (taskParams) => {
-        if (!request) {
+        if (!request2) {
           throw new Error("No request provided");
         }
-        return await taskStore.createTask(taskParams, request.id, {
-          method: request.method,
-          params: request.params
+        return await taskStore.createTask(taskParams, request2.id, {
+          method: request2.method,
+          params: request2.params
         }, sessionId);
       },
       getTask: async (taskId) => {
@@ -35072,8 +35072,8 @@ var ExperimentalServerTasks = class {
    *
    * @experimental
    */
-  requestStream(request, resultSchema, options) {
-    return this._server.requestStream(request, resultSchema, options);
+  requestStream(request2, resultSchema, options) {
+    return this._server.requestStream(request2, resultSchema, options);
   }
   /**
    * Sends a sampling request and returns an AsyncGenerator that yields response messages.
@@ -35318,12 +35318,12 @@ var Server = class extends Protocol {
     this._capabilities = options?.capabilities ?? {};
     this._instructions = options?.instructions;
     this._jsonSchemaValidator = options?.jsonSchemaValidator ?? new AjvJsonSchemaValidator();
-    this.setRequestHandler(InitializeRequestSchema, (request) => this._oninitialize(request));
+    this.setRequestHandler(InitializeRequestSchema, (request2) => this._oninitialize(request2));
     this.setNotificationHandler(InitializedNotificationSchema, () => this.oninitialized?.());
     if (this._capabilities.logging) {
-      this.setRequestHandler(SetLevelRequestSchema, async (request, extra) => {
+      this.setRequestHandler(SetLevelRequestSchema, async (request2, extra) => {
         const transportSessionId = extra.sessionId || extra.requestInfo?.headers["mcp-session-id"] || void 0;
-        const { level } = request.params;
+        const { level } = request2.params;
         const parseResult = LoggingLevelSchema.safeParse(level);
         if (parseResult.success) {
           this._loggingLevels.set(transportSessionId, parseResult.data);
@@ -35373,14 +35373,14 @@ var Server = class extends Protocol {
     }
     const method = methodValue;
     if (method === "tools/call") {
-      const wrappedHandler = async (request, extra) => {
-        const validatedRequest = safeParse3(CallToolRequestSchema, request);
+      const wrappedHandler = async (request2, extra) => {
+        const validatedRequest = safeParse3(CallToolRequestSchema, request2);
         if (!validatedRequest.success) {
           const errorMessage = validatedRequest.error instanceof Error ? validatedRequest.error.message : String(validatedRequest.error);
           throw new McpError(ErrorCode.InvalidParams, `Invalid tools/call request: ${errorMessage}`);
         }
         const { params } = validatedRequest.data;
-        const result = await Promise.resolve(handler(request, extra));
+        const result = await Promise.resolve(handler(request2, extra));
         if (params.task) {
           const taskValidationResult = safeParse3(CreateTaskResultSchema, result);
           if (!taskValidationResult.success) {
@@ -35511,10 +35511,10 @@ var Server = class extends Protocol {
     }
     assertToolsCallTaskCapability(this._capabilities.tasks?.requests, method, "Server");
   }
-  async _oninitialize(request) {
-    const requestedVersion = request.params.protocolVersion;
-    this._clientCapabilities = request.params.capabilities;
-    this._clientVersion = request.params.clientInfo;
+  async _oninitialize(request2) {
+    const requestedVersion = request2.params.protocolVersion;
+    this._clientCapabilities = request2.params.capabilities;
+    this._clientVersion = request2.params.clientInfo;
     const protocolVersion = SUPPORTED_PROTOCOL_VERSIONS.includes(requestedVersion) ? requestedVersion : LATEST_PROTOCOL_VERSION;
     return {
       protocolVersion,
@@ -35878,33 +35878,33 @@ var McpServer = class {
         return toolDefinition;
       })
     }));
-    this.server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
+    this.server.setRequestHandler(CallToolRequestSchema, async (request2, extra) => {
       try {
-        const tool = this._registeredTools[request.params.name];
+        const tool = this._registeredTools[request2.params.name];
         if (!tool) {
-          throw new McpError(ErrorCode.InvalidParams, `Tool ${request.params.name} not found`);
+          throw new McpError(ErrorCode.InvalidParams, `Tool ${request2.params.name} not found`);
         }
         if (!tool.enabled) {
-          throw new McpError(ErrorCode.InvalidParams, `Tool ${request.params.name} disabled`);
+          throw new McpError(ErrorCode.InvalidParams, `Tool ${request2.params.name} disabled`);
         }
-        const isTaskRequest = !!request.params.task;
+        const isTaskRequest = !!request2.params.task;
         const taskSupport = tool.execution?.taskSupport;
         const isTaskHandler = "createTask" in tool.handler;
         if ((taskSupport === "required" || taskSupport === "optional") && !isTaskHandler) {
-          throw new McpError(ErrorCode.InternalError, `Tool ${request.params.name} has taskSupport '${taskSupport}' but was not registered with registerToolTask`);
+          throw new McpError(ErrorCode.InternalError, `Tool ${request2.params.name} has taskSupport '${taskSupport}' but was not registered with registerToolTask`);
         }
         if (taskSupport === "required" && !isTaskRequest) {
-          throw new McpError(ErrorCode.MethodNotFound, `Tool ${request.params.name} requires task augmentation (taskSupport: 'required')`);
+          throw new McpError(ErrorCode.MethodNotFound, `Tool ${request2.params.name} requires task augmentation (taskSupport: 'required')`);
         }
         if (taskSupport === "optional" && !isTaskRequest && isTaskHandler) {
-          return await this.handleAutomaticTaskPolling(tool, request, extra);
+          return await this.handleAutomaticTaskPolling(tool, request2, extra);
         }
-        const args = await this.validateToolInput(tool, request.params.arguments, request.params.name);
+        const args = await this.validateToolInput(tool, request2.params.arguments, request2.params.name);
         const result = await this.executeToolHandler(tool, args, extra);
         if (isTaskRequest) {
           return result;
         }
-        await this.validateToolOutput(tool, result, request.params.name);
+        await this.validateToolOutput(tool, result, request2.params.name);
         return result;
       } catch (error62) {
         if (error62 instanceof McpError) {
@@ -36008,11 +36008,11 @@ var McpServer = class {
   /**
    * Handles automatic task polling for tools with taskSupport 'optional'.
    */
-  async handleAutomaticTaskPolling(tool, request, extra) {
+  async handleAutomaticTaskPolling(tool, request2, extra) {
     if (!extra.taskStore) {
       throw new Error("No task store provided for task-capable tool.");
     }
-    const args = await this.validateToolInput(tool, request.params.arguments, request.params.name);
+    const args = await this.validateToolInput(tool, request2.params.arguments, request2.params.name);
     const handler = tool.handler;
     const taskExtra = { ...extra, taskStore: extra.taskStore };
     const createTaskResult = args ? await Promise.resolve(handler.createTask(args, taskExtra)) : (
@@ -36040,21 +36040,21 @@ var McpServer = class {
     this.server.registerCapabilities({
       completions: {}
     });
-    this.server.setRequestHandler(CompleteRequestSchema, async (request) => {
-      switch (request.params.ref.type) {
+    this.server.setRequestHandler(CompleteRequestSchema, async (request2) => {
+      switch (request2.params.ref.type) {
         case "ref/prompt":
-          assertCompleteRequestPrompt(request);
-          return this.handlePromptCompletion(request, request.params.ref);
+          assertCompleteRequestPrompt(request2);
+          return this.handlePromptCompletion(request2, request2.params.ref);
         case "ref/resource":
-          assertCompleteRequestResourceTemplate(request);
-          return this.handleResourceCompletion(request, request.params.ref);
+          assertCompleteRequestResourceTemplate(request2);
+          return this.handleResourceCompletion(request2, request2.params.ref);
         default:
-          throw new McpError(ErrorCode.InvalidParams, `Invalid completion reference: ${request.params.ref}`);
+          throw new McpError(ErrorCode.InvalidParams, `Invalid completion reference: ${request2.params.ref}`);
       }
     });
     this._completionHandlerInitialized = true;
   }
-  async handlePromptCompletion(request, ref) {
+  async handlePromptCompletion(request2, ref) {
     const prompt = this._registeredPrompts[ref.name];
     if (!prompt) {
       throw new McpError(ErrorCode.InvalidParams, `Prompt ${ref.name} not found`);
@@ -36066,7 +36066,7 @@ var McpServer = class {
       return EMPTY_COMPLETION_RESULT;
     }
     const promptShape = getObjectShape(prompt.argsSchema);
-    const field = promptShape?.[request.params.argument.name];
+    const field = promptShape?.[request2.params.argument.name];
     if (!isCompletable(field)) {
       return EMPTY_COMPLETION_RESULT;
     }
@@ -36074,22 +36074,22 @@ var McpServer = class {
     if (!completer) {
       return EMPTY_COMPLETION_RESULT;
     }
-    const suggestions = await completer(request.params.argument.value, request.params.context);
+    const suggestions = await completer(request2.params.argument.value, request2.params.context);
     return createCompletionResult(suggestions);
   }
-  async handleResourceCompletion(request, ref) {
+  async handleResourceCompletion(request2, ref) {
     const template = Object.values(this._registeredResourceTemplates).find((t) => t.resourceTemplate.uriTemplate.toString() === ref.uri);
     if (!template) {
       if (this._registeredResources[ref.uri]) {
         return EMPTY_COMPLETION_RESULT;
       }
-      throw new McpError(ErrorCode.InvalidParams, `Resource template ${request.params.ref.uri} not found`);
+      throw new McpError(ErrorCode.InvalidParams, `Resource template ${request2.params.ref.uri} not found`);
     }
-    const completer = template.resourceTemplate.completeCallback(request.params.argument.name);
+    const completer = template.resourceTemplate.completeCallback(request2.params.argument.name);
     if (!completer) {
       return EMPTY_COMPLETION_RESULT;
     }
-    const suggestions = await completer(request.params.argument.value, request.params.context);
+    const suggestions = await completer(request2.params.argument.value, request2.params.context);
     return createCompletionResult(suggestions);
   }
   setResourceRequestHandlers() {
@@ -36104,7 +36104,7 @@ var McpServer = class {
         listChanged: true
       }
     });
-    this.server.setRequestHandler(ListResourcesRequestSchema, async (request, extra) => {
+    this.server.setRequestHandler(ListResourcesRequestSchema, async (request2, extra) => {
       const resources = Object.entries(this._registeredResources).filter(([_, resource]) => resource.enabled).map(([uri, resource]) => ({
         uri,
         name: resource.name,
@@ -36134,8 +36134,8 @@ var McpServer = class {
       }));
       return { resourceTemplates };
     });
-    this.server.setRequestHandler(ReadResourceRequestSchema, async (request, extra) => {
-      const uri = new URL(request.params.uri);
+    this.server.setRequestHandler(ReadResourceRequestSchema, async (request2, extra) => {
+      const uri = new URL(request2.params.uri);
       const resource = this._registeredResources[uri.toString()];
       if (resource) {
         if (!resource.enabled) {
@@ -36174,21 +36174,21 @@ var McpServer = class {
         };
       })
     }));
-    this.server.setRequestHandler(GetPromptRequestSchema, async (request, extra) => {
-      const prompt = this._registeredPrompts[request.params.name];
+    this.server.setRequestHandler(GetPromptRequestSchema, async (request2, extra) => {
+      const prompt = this._registeredPrompts[request2.params.name];
       if (!prompt) {
-        throw new McpError(ErrorCode.InvalidParams, `Prompt ${request.params.name} not found`);
+        throw new McpError(ErrorCode.InvalidParams, `Prompt ${request2.params.name} not found`);
       }
       if (!prompt.enabled) {
-        throw new McpError(ErrorCode.InvalidParams, `Prompt ${request.params.name} disabled`);
+        throw new McpError(ErrorCode.InvalidParams, `Prompt ${request2.params.name} disabled`);
       }
       if (prompt.argsSchema) {
         const argsObj = normalizeObjectSchema(prompt.argsSchema);
-        const parseResult = await safeParseAsync3(argsObj, request.params.arguments ?? {});
+        const parseResult = await safeParseAsync3(argsObj, request2.params.arguments ?? {});
         if (!parseResult.success) {
           const error62 = "error" in parseResult ? parseResult.error : "Unknown error";
           const errorMessage = getParseErrorMessage(error62);
-          throw new McpError(ErrorCode.InvalidParams, `Invalid arguments for prompt ${request.params.name}: ${errorMessage}`);
+          throw new McpError(ErrorCode.InvalidParams, `Invalid arguments for prompt ${request2.params.name}: ${errorMessage}`);
         }
         const args = parseResult.data;
         const cb = prompt.callback;
@@ -36591,11 +36591,300 @@ var EMPTY_COMPLETION_RESULT = {
   }
 };
 
+// src/files.ts
+import { lookup as dnsLookup } from "node:dns";
+import { readFile, stat } from "node:fs/promises";
+import { request } from "node:https";
+import { BlockList, isIP } from "node:net";
+import { homedir as homedir2 } from "node:os";
+import { basename, extname, resolve } from "node:path";
+var MAX_FILE_BYTES = 100 * 1024 * 1024;
+var MAX_FILES_PER_CALL = 10;
+var MAX_TOTAL_BYTES = 256 * 1024 * 1024;
+var DOWNLOAD_TIMEOUT_MS = 12e4;
+var CONTRACT_EXTENSIONS = [".pdf", ".docx", ".rtf", ".txt"];
+var EVIDENCE_EXTENSIONS = [
+  ...CONTRACT_EXTENSIONS,
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".mp4",
+  ".mov",
+  ".avi"
+];
+var CONTENT_TYPES = {
+  ".pdf": "application/pdf",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".rtf": "application/rtf",
+  ".txt": "text/plain",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".mp4": "video/mp4",
+  ".mov": "video/quicktime",
+  ".avi": "video/x-msvideo"
+};
+var MEDIA_TYPE_EXTENSIONS = {
+  "application/pdf": ".pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+  "application/rtf": ".rtf",
+  "text/rtf": ".rtf",
+  "text/plain": ".txt",
+  "image/jpeg": ".jpg",
+  "image/png": ".png",
+  "video/mp4": ".mp4",
+  "video/quicktime": ".mov",
+  "video/x-msvideo": ".avi"
+};
+var fileInputSchema = external_exports.object({
+  download_url: external_exports.string().optional().describe("HTTPS URL the file can be downloaded from. Required unless path is given."),
+  file_id: external_exports.string().optional().describe("ChatGPT's ID for an attached file. Other clients may pass the file name."),
+  mime_type: external_exports.string().optional().describe("The file's media type, e.g. application/pdf, if known."),
+  file_name: external_exports.string().optional().describe("The file's name including extension, if known."),
+  path: external_exports.string().optional().describe("Absolute path to a file on the user's computer. Only this local server accepts it; give download_url otherwise.")
+}).describe("One file: download_url, or path for a file on this computer.");
+var InputError = class extends Error {
+};
+var AttachmentBudget = class {
+  remaining = MAX_TOTAL_BYTES;
+  constructor(fileCount) {
+    if (fileCount > MAX_FILES_PER_CALL) {
+      throw new InputError(
+        `Too many files: ${fileCount} were provided and one call accepts at most ${MAX_FILES_PER_CALL}.`
+      );
+    }
+  }
+  overBudget(label) {
+    return new InputError(
+      `${label}: the files in this call together exceed ${MAX_TOTAL_BYTES / (1024 * 1024)} MiB.`
+    );
+  }
+  charge(size, label) {
+    if (size > this.remaining) throw this.overBudget(label);
+    this.remaining -= size;
+  }
+};
+var privateRanges = new BlockList();
+for (const [net, prefix] of [
+  ["0.0.0.0", 8],
+  ["10.0.0.0", 8],
+  ["100.64.0.0", 10],
+  ["127.0.0.0", 8],
+  ["169.254.0.0", 16],
+  ["172.16.0.0", 12],
+  ["192.168.0.0", 16]
+]) {
+  privateRanges.addSubnet(net, prefix, "ipv4");
+}
+for (const [net, prefix] of [
+  ["::", 127],
+  ["fc00::", 7],
+  ["fe80::", 10]
+]) {
+  privateRanges.addSubnet(net, prefix, "ipv6");
+}
+function isPrivateAddress(address) {
+  const mapped = address.toLowerCase().startsWith("::ffff:") ? address.slice(7) : address;
+  const family = isIP(mapped);
+  if (family === 0) return true;
+  return privateRanges.check(mapped, family === 4 ? "ipv4" : "ipv6");
+}
+var NotPublicAddress = class extends Error {
+  constructor(host) {
+    super(host);
+    this.host = host;
+  }
+  host;
+};
+var publicLookup = (hostname3, options, callback) => {
+  dnsLookup(hostname3, { ...options, all: true }, (error62, addresses) => {
+    if (error62) return callback(error62, "", 0);
+    if (addresses.length === 0 || addresses.some((entry) => isPrivateAddress(entry.address))) {
+      return callback(new NotPublicAddress(hostname3), "", 0);
+    }
+    if (options.all) return callback(null, addresses);
+    callback(null, addresses[0].address, addresses[0].family);
+  });
+};
+function dispositionFilename(header) {
+  let name = "";
+  const encoded = /filename\*\s*=\s*[^']*'[^']*'([^;]+)/i.exec(header);
+  if (encoded) {
+    try {
+      name = decodeURIComponent(encoded[1].trim().replace(/^"|"$/g, ""));
+    } catch {
+      name = "";
+    }
+  }
+  if (!name) {
+    const plain = /filename\s*=\s*(?:"([^"]*)"|([^;]+))/i.exec(header);
+    name = (plain?.[1] ?? plain?.[2] ?? "").trim();
+  }
+  return name.replace(/\\/g, "/").split("/").pop() ?? "";
+}
+function decodedName(pathname) {
+  try {
+    return decodeURIComponent(basename(pathname));
+  } catch {
+    return basename(pathname);
+  }
+}
+function fetchOnce(url2, label, budget) {
+  const tooLarge = new InputError(`${label}: the file is larger than 100 MiB.`);
+  return new Promise((done, failed) => {
+    const req = request(url2, { lookup: publicLookup, timeout: DOWNLOAD_TIMEOUT_MS }, (res) => {
+      const status = res.statusCode ?? 0;
+      const header = (name) => {
+        const value = res.headers[name];
+        return (Array.isArray(value) ? value[0] : value) ?? "";
+      };
+      if (status >= 300 && status < 400 && res.headers.location) {
+        res.resume();
+        return done({ redirect: new URL(res.headers.location, url2) });
+      }
+      if (status >= 400) {
+        res.resume();
+        return failed(new InputError(`${label}: downloading the file failed with HTTP ${status}.`));
+      }
+      const refuse = (error62) => {
+        failed(error62);
+        req.destroy();
+      };
+      const declared = Number(header("content-length") || 0);
+      if (declared > MAX_FILE_BYTES) return refuse(tooLarge);
+      if (declared > budget.remaining) return refuse(budget.overBudget(label));
+      const chunks = [];
+      let total = 0;
+      res.on("data", (chunk) => {
+        total += chunk.length;
+        if (total > MAX_FILE_BYTES) return refuse(tooLarge);
+        if (total > budget.remaining) return refuse(budget.overBudget(label));
+        chunks.push(chunk);
+      });
+      res.on("end", () => {
+        budget.charge(total, label);
+        done({
+          bytes: Buffer.concat(chunks),
+          name: dispositionFilename(header("content-disposition")) || decodedName(url2.pathname),
+          mediaType: header("content-type")
+        });
+      });
+      res.on("error", () => failed(new InputError(`${label}: the file could not be downloaded.`)));
+    });
+    req.on("timeout", () => req.destroy(new InputError(`${label}: the download timed out.`)));
+    req.on("error", (error62) => {
+      if (error62 instanceof InputError) return failed(error62);
+      if (error62 instanceof NotPublicAddress) {
+        return failed(new InputError(`${label}: download_url host '${error62.host}' is not a public address.`));
+      }
+      failed(new InputError(`${label}: the file could not be downloaded.`));
+    });
+    req.end();
+  });
+}
+async function download(rawUrl, label, budget) {
+  let url2;
+  try {
+    url2 = new URL(rawUrl);
+  } catch {
+    throw new InputError(`${label}: download_url is not a valid URL.`);
+  }
+  for (let hop = 0; hop < 4; hop++) {
+    if (url2.protocol !== "https:") throw new InputError(`${label}: download_url must use https.`);
+    const host = url2.hostname.replace(/^\[|\]$/g, "");
+    if (isIP(host) && isPrivateAddress(host)) {
+      throw new InputError(`${label}: download_url host '${url2.hostname}' is not a public address.`);
+    }
+    const result = await fetchOnce(url2, label, budget);
+    if (!("redirect" in result)) return result;
+    url2 = result.redirect;
+  }
+  throw new InputError(`${label}: download_url redirected too many times.`);
+}
+function mediaType(value) {
+  return (value ?? "").split(";")[0].trim().toLowerCase();
+}
+function sniffExtension(bytes) {
+  const data = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const startsWith = (prefix) => data.subarray(0, prefix.length).equals(Buffer.from(prefix, "latin1"));
+  if (startsWith("%PDF-")) return ".pdf";
+  if (startsWith("\x89PNG\r\n\n")) return ".png";
+  if (startsWith("\xFF\xD8\xFF")) return ".jpg";
+  if (startsWith("{\\rtf")) return ".rtf";
+  if (startsWith("PK") && data.includes("word/document.xml")) return ".docx";
+  if (data.subarray(4, 8).toString("latin1") === "ftyp") {
+    return data.subarray(8, 12).toString("latin1") === "qt  " ? ".mov" : ".mp4";
+  }
+  if (startsWith("RIFF") && data.subarray(8, 12).toString("latin1") === "AVI ") return ".avi";
+  return "";
+}
+function typedFilename(input2, found, allowed, defaultName) {
+  const name = (input2.file_name || found.name).trim();
+  if (allowed.includes(extname(name).toLowerCase())) return name;
+  for (const extension of [
+    MEDIA_TYPE_EXTENSIONS[mediaType(input2.mime_type)],
+    MEDIA_TYPE_EXTENSIONS[mediaType(found.mediaType)],
+    sniffExtension(found.bytes)
+  ]) {
+    if (extension && allowed.includes(extension)) return `${name || defaultName}${extension}`;
+  }
+  return name || defaultName;
+}
+async function readLocalFile(input2, label, budget) {
+  const path = input2.path;
+  const expanded = path.startsWith("~/") ? homedir2() + path.slice(1) : path;
+  const fullPath = resolve(expanded);
+  let size;
+  try {
+    const info = await stat(fullPath);
+    if (!info.isFile()) throw new Error("not a file");
+    size = info.size;
+  } catch {
+    throw new InputError(`${label}: no readable file at ${fullPath}.`);
+  }
+  if (size > MAX_FILE_BYTES) throw new InputError(`${label}: the file is larger than 100 MiB.`);
+  budget.charge(size, label);
+  return { bytes: await readFile(fullPath), name: basename(fullPath), mediaType: "" };
+}
+async function resolveFile(source, opts) {
+  const { label, allowed, transport, budget } = opts;
+  let bytes;
+  let filename;
+  if (typeof source === "string") {
+    bytes = new TextEncoder().encode(source);
+    if (bytes.byteLength > MAX_FILE_BYTES) throw new InputError(`${label}: the file is larger than 100 MiB.`);
+    budget.charge(bytes.byteLength, label);
+    filename = `${opts.defaultName}.txt`;
+  } else {
+    const sources = [source.path, source.download_url].filter((value) => value !== void 0 && value !== "");
+    if (sources.length !== 1) {
+      throw new InputError(`${label}: provide exactly one of download_url or path.`);
+    }
+    if (source.path && transport !== "stdio") {
+      throw new InputError(
+        `${label}: file paths only work when the plugin runs on the user's computer. Use download_url instead.`
+      );
+    }
+    const found = source.path ? await readLocalFile(source, label, budget) : await download(source.download_url, label, budget);
+    bytes = found.bytes;
+    filename = typedFilename(source, found, allowed, opts.defaultName);
+  }
+  if (bytes.byteLength === 0) throw new InputError(`${label}: the file is empty.`);
+  const extension = extname(filename).toLowerCase();
+  if (!allowed.includes(extension)) {
+    throw new InputError(
+      `${label}: '${filename}' is not an accepted file type. Accepted: ${allowed.join(", ")}.`
+    );
+  }
+  return { filename, contentType: CONTENT_TYPES[extension], bytes };
+}
+
 // src/api.ts
-import { randomUUID } from "node:crypto";
 var DIRECT_UPLOAD_BYTES = 8 * 1024 * 1024;
 var REQUEST_TIMEOUT_MS = 12e4;
 var UPLOAD_TIMEOUT_MS = 3e5;
+var KEY_REUSED_MESSAGE = "This Idempotency-Key was already used for a different request.";
+var IN_PROGRESS_MESSAGE = "A request with this Idempotency-Key is still in progress.";
 var ApiError = class extends Error {
   constructor(status, message, details = [], reason, requestId) {
     super(message);
@@ -36720,15 +37009,34 @@ var DecisionLayerClient = class {
     }
     return upload.ticket;
   }
+  /** Says what a refused idempotency key means for the request, if it was refused. */
+  retryAdvice(error62) {
+    if (!(error62 instanceof ApiError) || error62.status !== 409) return void 0;
+    if (error62.message === IN_PROGRESS_MESSAGE) {
+      return "The first attempt with this idempotency_key is still running. Wait a minute, then call again with the same idempotency_key and the same arguments to get its result.";
+    }
+    if (error62.message === KEY_REUSED_MESSAGE) {
+      const large = DIRECT_UPLOAD_BYTES / (1024 * 1024);
+      return `This idempotency_key was already used for a request with different arguments or files. If this is a retry after an error or timeout, the first attempt may have gone through: a retry that includes a file of ${large} MB or more always looks different, because the file is uploaded again. Ask the user to check their dashboard at ${this.config.baseUrl}/dashboard before trying again with a new idempotency_key.`;
+    }
+    return void 0;
+  }
   /**
    * POSTs a multipart form. Blank fields are left out so the API applies its
-   * own defaults. `idempotencyKey` makes a retried call return the original
-   * result instead of filing twice.
+   * own defaults. The caller chooses `idempotencyKey` and sends it again on a
+   * retry, so a retried call returns the original result instead of filing
+   * twice; a key made up here would be lost with a call that timed out.
    */
-  async postForm(path, fields, files, idempotencyKey2 = randomUUID()) {
+  async postForm(path, fields, files2, idempotencyKey2) {
+    const key = idempotencyKey2.trim();
+    if (!key) {
+      throw new InputError(
+        "idempotency_key is required: pass a new unique value, such as a UUID, and reuse it only to retry this request."
+      );
+    }
     const tickets = [];
     const inline = [];
-    for (const part of files) {
+    for (const part of files2) {
       if (part.file.bytes.byteLength >= DIRECT_UPLOAD_BYTES) {
         tickets.push([part.ticketField, await this.directUpload(part.file)]);
       } else {
@@ -36746,180 +37054,87 @@ var DecisionLayerClient = class {
       }
       return form;
     };
-    return this.send("POST", path, { "Idempotency-Key": idempotencyKey2 }, build, await this.userId());
-  }
-};
-
-// src/files.ts
-import { lookup } from "node:dns/promises";
-import { readFile, stat } from "node:fs/promises";
-import { BlockList, isIP } from "node:net";
-import { homedir as homedir2 } from "node:os";
-import { basename, extname, resolve } from "node:path";
-var MAX_FILE_BYTES = 100 * 1024 * 1024;
-var CONTRACT_EXTENSIONS = [".pdf", ".docx", ".rtf", ".txt"];
-var EVIDENCE_EXTENSIONS = [
-  ...CONTRACT_EXTENSIONS,
-  ".jpg",
-  ".jpeg",
-  ".png",
-  ".mp4",
-  ".mov",
-  ".avi"
-];
-var CONTENT_TYPES = {
-  ".pdf": "application/pdf",
-  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  ".rtf": "application/rtf",
-  ".txt": "text/plain",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".png": "image/png",
-  ".mp4": "video/mp4",
-  ".mov": "video/quicktime",
-  ".avi": "video/x-msvideo"
-};
-var fileInputSchema = external_exports.object({
-  path: external_exports.string().optional().describe("Absolute path to a file on the user's computer. Only works when the plugin runs locally."),
-  download_url: external_exports.string().optional().describe("HTTPS URL the file can be downloaded from."),
-  text: external_exports.string().optional().describe("The document's full text, used when the user pasted it into the chat. Sent as a .txt file."),
-  filename: external_exports.string().optional().describe("File name including extension. Required with download_url when the URL does not end in one."),
-  file_id: external_exports.string().optional().describe("Set by ChatGPT for attached files. Ignored.")
-}).describe("One document. Provide exactly one of path, download_url or text.");
-var InputError = class extends Error {
-};
-var privateRanges = new BlockList();
-for (const [net, prefix] of [
-  ["0.0.0.0", 8],
-  ["10.0.0.0", 8],
-  ["100.64.0.0", 10],
-  ["127.0.0.0", 8],
-  ["169.254.0.0", 16],
-  ["172.16.0.0", 12],
-  ["192.168.0.0", 16]
-]) {
-  privateRanges.addSubnet(net, prefix, "ipv4");
-}
-for (const [net, prefix] of [
-  ["::", 127],
-  ["fc00::", 7],
-  ["fe80::", 10]
-]) {
-  privateRanges.addSubnet(net, prefix, "ipv6");
-}
-function isPrivateAddress(address) {
-  const mapped = address.toLowerCase().startsWith("::ffff:") ? address.slice(7) : address;
-  const family = isIP(mapped);
-  if (family === 0) return true;
-  return privateRanges.check(mapped, family === 4 ? "ipv4" : "ipv6");
-}
-async function assertPublicHost(hostname3) {
-  const host = hostname3.replace(/^\[|\]$/g, "");
-  const addresses = isIP(host) ? [host] : (await lookup(host, { all: true })).map((entry) => entry.address);
-  if (addresses.length === 0 || addresses.some(isPrivateAddress)) {
-    throw new InputError(`download_url host '${hostname3}' is not a public address.`);
-  }
-}
-async function download(rawUrl, label) {
-  let url2;
-  try {
-    url2 = new URL(rawUrl);
-  } catch {
-    throw new InputError(`${label}: download_url is not a valid URL.`);
-  }
-  for (let hop = 0; hop < 4; hop++) {
-    if (url2.protocol !== "https:") throw new InputError(`${label}: download_url must use https.`);
-    await assertPublicHost(url2.hostname);
-    const response = await fetch(url2, { redirect: "manual", signal: AbortSignal.timeout(12e4) });
-    if (response.status >= 300 && response.status < 400) {
-      const next = response.headers.get("location");
-      if (!next) break;
-      url2 = new URL(next, url2);
-      continue;
-    }
-    if (!response.ok) {
-      throw new InputError(`${label}: downloading the file failed with HTTP ${response.status}.`);
-    }
-    if (Number(response.headers.get("content-length") || 0) > MAX_FILE_BYTES) {
-      throw new InputError(`${label}: the file is larger than 100 MiB.`);
-    }
-    return { bytes: new Uint8Array(await response.arrayBuffer()), url: url2 };
-  }
-  throw new InputError(`${label}: download_url redirected too many times.`);
-}
-async function resolveFile(input2, opts) {
-  const { label, allowed, transport } = opts;
-  const sources = [input2.path, input2.download_url, input2.text].filter(
-    (value) => value !== void 0 && value !== ""
-  );
-  if (sources.length !== 1) {
-    throw new InputError(`${label}: provide exactly one of path, download_url or text.`);
-  }
-  let bytes;
-  let filename;
-  if (input2.text) {
-    bytes = new TextEncoder().encode(input2.text);
-    filename = input2.filename || `${opts.defaultName}.txt`;
-    if (extname(filename).toLowerCase() !== ".txt") filename = `${filename}.txt`;
-  } else if (input2.path) {
-    if (transport !== "stdio") {
-      throw new InputError(
-        `${label}: file paths only work when the plugin runs on the user's computer. Use download_url or text instead.`
-      );
-    }
-    const expanded = input2.path.startsWith("~/") ? homedir2() + input2.path.slice(1) : input2.path;
-    const fullPath = resolve(expanded);
-    let size;
     try {
-      const info = await stat(fullPath);
-      if (!info.isFile()) throw new Error("not a file");
-      size = info.size;
-    } catch {
-      throw new InputError(`${label}: no readable file at ${fullPath}.`);
+      return await this.send("POST", path, { "Idempotency-Key": key }, build, await this.userId());
+    } catch (error62) {
+      const advice = this.retryAdvice(error62);
+      if (advice) throw new InputError(advice);
+      throw error62;
     }
-    if (size > MAX_FILE_BYTES) throw new InputError(`${label}: the file is larger than 100 MiB.`);
-    bytes = await readFile(fullPath);
-    filename = input2.filename || basename(fullPath);
-  } else {
-    const downloaded = await download(input2.download_url, label);
-    bytes = downloaded.bytes;
-    filename = input2.filename || decodeURIComponent(basename(downloaded.url.pathname));
   }
-  if (bytes.byteLength === 0) throw new InputError(`${label}: the file is empty.`);
-  if (bytes.byteLength > MAX_FILE_BYTES) throw new InputError(`${label}: the file is larger than 100 MiB.`);
-  const extension = extname(filename).toLowerCase();
-  if (!allowed.includes(extension)) {
-    throw new InputError(
-      `${label}: '${filename}' is not an accepted file type. Accepted: ${allowed.join(", ")}.`
-    );
-  }
-  return { filename, contentType: CONTENT_TYPES[extension], bytes };
-}
+};
 
 // src/tools.ts
 var FILING_ACCESS_EMAIL = "casemanager@decisionlayer.ai";
-var INSTRUCTIONS = "Brings disputes to DecisionLayer arbitration. Call get_account first to confirm the API key works, whether it is a live or test key, and whether the account may file full cases (can_file_cases; consent cases and simulations never need that). Never invent facts, names, addresses or amounts: ask the user. Before file_case or file_consent_case with a live key, show the user a summary and get an explicit yes; a live filing is real and contacts the other party. Before run_simulation, tell the user that the award is published at a public link for 30 days and that the run counts against the account's monthly allowance. Signing, payment and identity verification happen on the DecisionLayer website: hand the user the link a tool returns. When a tool call fails or a field is confusing, send_feedback tells the DecisionLayer team.";
+var INSTRUCTIONS = "Brings disputes to DecisionLayer arbitration for the user. Call get_account first: it confirms the API key works, whether it is a live or test key, and whether the account may file full cases (can_file_cases; consent cases and simulations never need that). Never invent facts, names, addresses or amounts: ask the user. Before file_case or file_consent_case, show the user a summary and get an explicit yes; with a live key a filing is real, and once the user signs and pays at the link it returns, the other party is notified. Before run_simulation, tell the user that the award is published at a public link for 30 days and that the run counts against the account's monthly allowance. Signing, payment and identity verification happen on the DecisionLayer website: hand the user the link a tool returns. If a tool fails in a way you cannot resolve, or the user wants to tell DecisionLayer something, offer to send a short report with send_feedback. Show the user the message and send it only if they agree; it carries their name and email.";
+var TRY_LATER = "Try again in a few minutes. If it keeps failing, offer to report it with send_feedback, including the reference.";
 var money = external_exports.union([external_exports.string(), external_exports.number()]).optional().describe('Amount demanded in US dollars, e.g. "3500.00". Omit or use 0 when no money is sought.');
-var idempotencyKey = external_exports.string().max(255).optional().describe(
-  "Reuse the same value when retrying a call that failed or timed out, so nothing is filed twice. The retry must send the same arguments; a retry made while the first attempt is still running returns 409 for about a minute."
+var idempotencyKey = external_exports.string().min(1).max(255).describe(
+  "A new unique value, such as a UUID, for this request. If the call fails or times out, retry with the same value and the same arguments: the first result comes back instead of a second one being created. Use a new value only for a new request."
 );
+var files = (description) => external_exports.array(fileInputSchema).max(10).optional().describe(description);
 var partyType = external_exports.enum(["individual", "organization"]).optional();
 var caseId = external_exports.string().regex(/^(case|creq)_[a-z0-9]+$/i, "Expected an ID starting with case_ or creq_.");
+var READ_ONLY = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
+var IRREVERSIBLE = { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true };
+var accountOutput = {
+  name: external_exports.string(),
+  email: external_exports.string(),
+  can_file_cases: external_exports.boolean().describe("Whether file_case is allowed. file_consent_case does not need it."),
+  dashboard_url: external_exports.string().describe("Where the user sees their cases and simulations."),
+  key_mode: external_exports.enum(["live", "test"]).describe("Whether the API key is a live key or a sandbox test key.")
+};
+var profileOutput = external_exports.object({
+  id: external_exports.string().describe("The DecisionLayer user ID. It never changes."),
+  name: external_exports.string().optional(),
+  email: external_exports.string().optional()
+}).strict();
+var filedOutput = {
+  id: external_exports.string().describe("case_ for a case, creq_ for a consent case."),
+  status: external_exports.string(),
+  action_url: external_exports.string().describe("Give this link to the user. Nothing goes to the other party until the user signs and pays there."),
+  dashboard_url: external_exports.string()
+};
+var caseOutput = {
+  id: external_exports.string(),
+  status: external_exports.string(),
+  role: external_exports.string().describe("The user's side: claimant or respondent."),
+  current_turn: external_exports.string().optional().describe("claimant or respondent, when a response is due."),
+  action_required: external_exports.boolean().describe("Whether the user has something to do now."),
+  next_action: external_exports.string().optional(),
+  action_url: external_exports.string().optional().describe("Where the user takes the next action."),
+  view_url: external_exports.string().describe("The case page on DecisionLayer."),
+  question_for_arbitration: external_exports.string(),
+  financial_demand_usd: external_exports.string().optional(),
+  respondent_name: external_exports.string()
+};
+var simulationOutput = {
+  id: external_exports.string(),
+  status: external_exports.string().describe("processing, retrying, ready or failed."),
+  page_url: external_exports.string().describe("The simulation page on DecisionLayer."),
+  text: external_exports.string().optional().describe("The award, once ready."),
+  pdf_url: external_exports.string().optional().describe("The public award PDF. Served for 30 days after the award is published; absent after that.")
+};
+var feedbackOutput = { id: external_exports.string().describe("The feedback ID, fb_...") };
 var REASON_HINTS = {
   not_claimed: "The respondent has not claimed this case yet. They claim it on the DecisionLayer website with the verification code from the notice email.",
   not_a_party: "The connected account is not a party to this case.",
   not_published: "The award has not been published yet."
 };
 function moneyString(value) {
-  if (value === void 0) return void 0;
+  if (value === void 0 || value === null) return void 0;
   return typeof value === "number" ? value.toFixed(2) : value;
 }
+function compact(data) {
+  return Object.fromEntries(Object.entries(data).filter(([, value]) => value !== void 0 && value !== null));
+}
 function ok(summary, data) {
+  const result = compact(data);
   return {
     content: [{ type: "text", text: `${summary}
 
-${JSON.stringify(data, null, 2)}` }],
-    structuredContent: data
+${JSON.stringify(result, null, 2)}` }],
+    structuredContent: result
   };
 }
 function fail(message) {
@@ -36934,12 +37149,8 @@ function describeError(error62, config3) {
     if (error62.status === 401) {
       lines.push(`Check the API key, or create a new one at ${config3.baseUrl}${KEYS_PAGE_PATH}.`);
     }
-    if (error62.status === 409) {
-      lines.push(
-        "If this was a retry, the first attempt may still be running: wait a minute, then call again with the same idempotency_key and the same arguments."
-      );
-    }
-    if (error62.requestId) lines.push(`Request ID: ${error62.requestId}`);
+    if (error62.requestId) lines.push(`Reference: ${error62.requestId}`);
+    if (error62.status >= 500) lines.push(TRY_LATER);
     return lines.join("\n");
   }
   return `Unexpected error: ${error62 instanceof Error ? error62.message : String(error62)}`;
@@ -36948,12 +37159,16 @@ function explain(error62, status, detail) {
   if (error62 instanceof ApiError && error62.status === status) error62.details.push(detail);
   throw error62;
 }
+function withText(inputs, text) {
+  return [...inputs ?? [], ...text?.trim() ? [text] : []];
+}
 function createServer(config3) {
   const server = new McpServer(
     { name: "decisionlayer", version: PLUGIN_VERSION },
     { instructions: INSTRUCTIONS }
   );
   const testKey = config3.apiKey ? isTestKey(config3.apiKey) : false;
+  const dashboardUrl = `${config3.baseUrl}/dashboard`;
   async function run(body) {
     if (!config3.apiKey) return fail(missingKeyMessage(config3.baseUrl, config3.transport));
     try {
@@ -36963,6 +37178,7 @@ function createServer(config3) {
     }
   }
   async function resolveParts(groups) {
+    const budget = new AttachmentBudget(groups.reduce((count, group) => count + group.inputs.length, 0));
     const parts = [];
     for (const { field, ticketField, inputs, allowed } of groups) {
       for (const [index, input2] of inputs.entries()) {
@@ -36970,7 +37186,8 @@ function createServer(config3) {
           label: inputs.length > 1 ? `${field}[${index}]` : field,
           allowed,
           transport: config3.transport,
-          defaultName: inputs.length > 1 ? `${field}_${index + 1}` : field
+          defaultName: inputs.length > 1 ? `${field}_${index + 1}` : field,
+          budget
         });
         parts.push({ field, ticketField, file: file2 });
       }
@@ -36980,43 +37197,61 @@ function createServer(config3) {
   const documents = (field, inputs) => ({
     field,
     ticketField: `${field}_tickets`,
-    inputs: inputs ?? [],
+    inputs,
     allowed: EVIDENCE_EXTENSIONS
   });
   server.registerTool(
     "get_account",
     {
       title: "Check DecisionLayer account",
-      description: "Use this first, and whenever the user asks whether the plugin is set up. Confirms the API key works and returns the account it belongs to, whether it is a live or sandbox test key, whether the account may file full cases (can_file_cases), and which DecisionLayer environment is in use.",
+      description: "Use this first, and whenever the user asks whether the plugin is set up. Returns the DecisionLayer account the API key belongs to, whether it may file cases, and whether the key is a live or sandbox test key.",
       inputSchema: {},
-      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      outputSchema: accountOutput,
+      annotations: READ_ONLY
+    },
+    () => run(async (client) => {
+      const account = await client.get("/me");
+      const name = `${account.first_name} ${account.last_name}`.trim();
+      const mode = testKey ? "test" : "live";
+      const filing = account.can_file_cases ? "The account may file full cases." : `The account is not yet approved to file full cases, so file_case would be refused. Consent cases and simulations do not need approval. To request filing access, email ${FILING_ACCESS_EMAIL}.`;
+      const notes = testKey ? "Test key: filings skip signing, payment and identity checks, send no email, and never produce an award. run_simulation needs a live key." : `Live key: filings are real. For a sandbox, create a test key at ${config3.baseUrl}${TEST_KEYS_PAGE_PATH}.`;
+      return ok(`Connected as ${name} <${account.email}> with a ${mode} key on ${config3.baseUrl}. ${filing} ${notes}`, {
+        name,
+        email: account.email,
+        can_file_cases: account.can_file_cases,
+        dashboard_url: dashboardUrl,
+        key_mode: mode
+      });
+    })
+  );
+  server.registerTool(
+    "get_profile",
+    {
+      title: "DecisionLayer profile",
+      description: "Returns the ID, name and email of the DecisionLayer account the API key belongs to, so the client can tell connected accounts apart. To check whether the account may file cases, use get_account.",
+      inputSchema: {},
+      outputSchema: profileOutput,
+      annotations: READ_ONLY,
       _meta: { "openai/profile": true }
     },
     () => run(async (client) => {
       const account = await client.get("/me");
-      const mode = testKey ? "test" : "live";
-      const filing = account.can_file_cases ? "The account may file full cases." : `The account is not yet approved to file full cases, so file_case would be refused. Consent cases and simulations do not need approval. To request filing access, email ${FILING_ACCESS_EMAIL}.`;
-      return ok(
-        `Connected as ${account.first_name} ${account.last_name} <${account.email}> with a ${mode} key on ${config3.baseUrl}. ${filing}`,
-        {
-          account,
-          key_mode: mode,
-          base_url: config3.baseUrl,
-          notes: testKey ? "Test key: filings skip signing, payment and identity checks, send no email, and never produce an award. run_simulation needs a live key." : `Live key: filings are real. For a sandbox, create a test key at ${config3.baseUrl}${TEST_KEYS_PAGE_PATH}.`
-        }
-      );
+      const name = `${account.first_name} ${account.last_name}`.trim();
+      const profile = compact({ id: account.id, name: name || void 0, email: account.email });
+      return { content: [{ type: "text", text: JSON.stringify(profile) }], structuredContent: profile };
     })
   );
   server.registerTool(
     "file_case",
     {
       title: "File an arbitration case",
-      description: "Use this to bring a full arbitration case under a contract that has an arbitration clause. The other party does not need to agree first. The claimant is the API key's account, which must be approved to file (get_account reports can_file_cases). With a live key this is a real filing: the user must then sign, pay the filing fee and verify identity, starting at the returned action_url. Only call after the user has reviewed a summary and confirmed.",
+      description: "Use this to bring a full arbitration case under a contract that has an arbitration clause. The other party does not need to agree first. The claimant is the API key's account, which must be approved to file (get_account reports can_file_cases). With a live key this is a real filing: the user must then sign, pay the filing fee and verify identity at the returned action_url. Only call after the user has reviewed a summary and confirmed.",
       inputSchema: {
         question_for_arbitration: external_exports.string().min(1).describe("The question the arbitrator is asked to decide."),
         argument: external_exports.string().min(1).describe("The claimant's opening argument: the facts and why they should win."),
-        contract_file: fileInputSchema.describe(
-          "The contract containing the arbitration clause (.pdf, .docx, .rtf or .txt). Provide exactly one of path, download_url or text."
+        contract_file: fileInputSchema.optional().describe("The contract containing the arbitration clause (.pdf, .docx, .rtf or .txt). Provide this or contract_text."),
+        contract_text: external_exports.string().optional().describe(
+          "The contract's full text, when the user pasted it instead of attaching a file. Sent as a .txt file. Provide this or contract_file."
         ),
         claimant_affirmation: external_exports.boolean().describe("True only if the user has affirmed the information is accurate and complete. Ask them; do not assume."),
         financial_demand_usd: money,
@@ -37049,21 +37284,27 @@ function createServer(config3) {
         city: external_exports.string().max(100).optional(),
         state: external_exports.string().max(100).optional(),
         zipcode: external_exports.string().max(20).optional(),
-        evidence: external_exports.array(fileInputSchema).max(20).optional().describe("Supporting evidence files."),
+        evidence: files("Supporting evidence files."),
+        evidence_text: external_exports.string().optional().describe("Evidence the user pasted as text, such as an email thread. Sent as a .txt file alongside any evidence files."),
         idempotency_key: idempotencyKey
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
-      _meta: { "openai/fileParams": ["contract_file"] }
+      outputSchema: filedOutput,
+      annotations: IRREVERSIBLE,
+      _meta: { "openai/fileParams": ["contract_file", "evidence"] }
     },
-    ({ contract_file, evidence, claimant_affirmation, financial_demand_usd, idempotency_key, ...fields }) => run(async (client) => {
+    ({ contract_file, contract_text, evidence, evidence_text, claimant_affirmation, financial_demand_usd, idempotency_key, ...fields }) => run(async (client) => {
       if (!claimant_affirmation) {
         throw new InputError(
           "The case was not filed. Ask the user to affirm that the information is accurate and complete, then call again with claimant_affirmation=true."
         );
       }
+      const contract = withText(contract_file ? [contract_file] : [], contract_text);
+      if (contract.length !== 1) {
+        throw new InputError("Provide the contract as exactly one of contract_file or contract_text.");
+      }
       const parts = await resolveParts([
-        { field: "contract_file", ticketField: "contract_file_ticket", inputs: [contract_file], allowed: CONTRACT_EXTENSIONS },
-        { field: "evidence", ticketField: "evidence_tickets", inputs: evidence ?? [], allowed: EVIDENCE_EXTENSIONS }
+        { field: "contract_file", ticketField: "contract_file_ticket", inputs: contract, allowed: CONTRACT_EXTENSIONS },
+        documents("evidence", withText(evidence, evidence_text))
       ]);
       const result = await client.postForm(
         "/cases",
@@ -37077,17 +37318,21 @@ function createServer(config3) {
           `Filing a full case needs an approved account; get_account reports this as can_file_cases. Consent cases and simulations do not need approval. To request filing access, email ${FILING_ACCESS_EMAIL}.`
         )
       );
-      const record2 = result.case ?? {};
-      const summary = record2.test ? `Test case ${record2.id} filed. Signing, payment and identity checks were skipped and no email was sent. It is now waiting on the respondent's first response.` : `Case ${record2.id} filed (${record2.status}). It is not active yet: the user must sign the arbitration terms, pay the filing fee and verify their identity, starting at ${result.action_url}`;
-      return ok(record2.view_url ? `${summary}
-Case page: ${record2.view_url}` : summary, result);
+      const record2 = result.case;
+      const summary = record2.test ? `Test case ${record2.id} filed. Signing, payment and identity checks were skipped and no email was sent. It is now waiting on the respondent's first response.` : `Case ${record2.id} filed. It is not active yet: the user must sign the arbitration terms, pay the filing fee and verify their identity at ${result.action_url}`;
+      return ok(summary, {
+        id: record2.id,
+        status: record2.status,
+        action_url: result.action_url,
+        dashboard_url: result.dashboard_url
+      });
     })
   );
   server.registerTool(
     "file_consent_case",
     {
       title: "File a consent case",
-      description: "Use this to bring a consent case: both parties agree to submit a dispute to arbitration, so no pre-existing arbitration clause is needed and no filing approval is required. The claimant is the API key's account. With a live key this is a real filing: the user signs and pays at the returned sign_url, then the respondent is emailed an invitation to accept. Only call after the user has reviewed a summary and confirmed.",
+      description: "Use this to bring a consent case: both parties agree to submit a dispute to arbitration, so no pre-existing arbitration clause is needed and no filing approval is required. The claimant is the API key's account. With a live key this is a real filing: the user signs and pays at the returned action_url, then the respondent is emailed an invitation to accept. Only call after the user has reviewed a summary and confirmed.",
       inputSchema: {
         question_for_arbitration: external_exports.string().min(1).describe("The question the arbitrator is asked to decide."),
         financial_demand_usd: money,
@@ -37104,16 +37349,27 @@ Case page: ${record2.view_url}` : summary, result);
         claimant_email: external_exports.string().optional().describe("Defaults to the account's."),
         claimant_contact_first_name: external_exports.string().max(100).optional().describe("Required when the claimant is an organization."),
         claimant_contact_last_name: external_exports.string().max(100).optional().describe("Required when the claimant is an organization."),
-        contract_files: external_exports.array(fileInputSchema).max(20).optional().describe("Optional contracts related to the dispute (.pdf, .docx, .rtf, .txt)."),
-        supporting_documents: external_exports.array(fileInputSchema).max(20).optional().describe("Optional supporting documents."),
+        contract_files: files("Optional contracts related to the dispute (.pdf, .docx, .rtf, .txt)."),
+        contract_text: external_exports.string().optional().describe("A contract the user pasted as text. Sent as a .txt file alongside any contract_files."),
+        supporting_documents: files("Optional supporting documents."),
+        supporting_text: external_exports.string().optional().describe(
+          "Supporting material the user pasted as text, such as an email thread. Sent as a .txt file alongside any supporting_documents."
+        ),
         idempotency_key: idempotencyKey
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }
+      outputSchema: filedOutput,
+      annotations: IRREVERSIBLE,
+      _meta: { "openai/fileParams": ["contract_files", "supporting_documents"] }
     },
-    ({ contract_files, supporting_documents, financial_demand_usd, idempotency_key, ...fields }) => run(async (client) => {
+    ({ contract_files, contract_text, supporting_documents, supporting_text, financial_demand_usd, idempotency_key, ...fields }) => run(async (client) => {
       const parts = await resolveParts([
-        { field: "contract_files", ticketField: "contract_files_tickets", inputs: contract_files ?? [], allowed: CONTRACT_EXTENSIONS },
-        documents("supporting_documents", supporting_documents)
+        {
+          field: "contract_files",
+          ticketField: "contract_files_tickets",
+          inputs: withText(contract_files, contract_text),
+          allowed: CONTRACT_EXTENSIONS
+        },
+        documents("supporting_documents", withText(supporting_documents, supporting_text))
       ]);
       const result = await client.postForm(
         "/consent-cases",
@@ -37121,10 +37377,15 @@ Case page: ${record2.view_url}` : summary, result);
         parts,
         idempotency_key
       );
-      const record2 = result.case ?? {};
-      const summary = record2.test ? `Test consent case ${record2.id} created. Signing and payment were skipped and no email was sent.` : `Consent case ${record2.id} created (${record2.status}). The respondent is not invited yet: the user must sign and pay at ${result.sign_url ?? record2.action_url ?? result.dashboard_url}`;
-      return ok(record2.view_url ? `${summary}
-Case page: ${record2.view_url}` : summary, result);
+      const record2 = result.case;
+      const actionUrl = result.sign_url || result.dashboard_url;
+      const summary = record2.test ? `Test consent case ${record2.id} created (${record2.status}). Signing and payment were recorded for the user and no email was sent.` : `Consent case ${record2.id} created. The respondent is not invited yet: the user must sign and pay at ${actionUrl}`;
+      return ok(summary, {
+        id: record2.id,
+        status: record2.status,
+        action_url: actionUrl,
+        dashboard_url: result.dashboard_url
+      });
     })
   );
   server.registerTool(
@@ -37132,8 +37393,9 @@ Case page: ${record2.view_url}` : summary, result);
     {
       title: "Check a case",
       description: "Use this to check the status of a case or consent case the user is a party to, whose turn it is, and what they need to do next. Accepts IDs starting with case_ or creq_. Simulations have their own tool, get_simulation.",
-      inputSchema: { case_id: caseId },
-      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
+      inputSchema: { case_id: caseId.describe("A case ID (case_...) or consent case ID (creq_...).") },
+      outputSchema: caseOutput,
+      annotations: READ_ONLY
     },
     ({ case_id }) => run(async (client) => {
       const id = case_id.toLowerCase();
@@ -37146,14 +37408,26 @@ Case page: ${record2.view_url}` : summary, result);
         )
       );
       const parts = [`${id} is ${record2.status}${record2.role ? ` and the user is the ${record2.role}` : ""}.`];
-      if (record2.status === "awaiting_response" && record2.current_turn) {
-        parts.push(`It is the ${record2.current_turn}'s turn${record2.next_round ? ` (round ${record2.next_round})` : ""}.`);
+      if (record2.current_turn) {
+        parts.push(`It is the ${record2.current_turn}'s turn to respond${record2.next_round ? ` (round ${record2.next_round})` : ""}.`);
       }
       parts.push(
         record2.action_required ? `Next step for the user: ${record2.next_action} at ${record2.action_url}` : "Nothing is required from the user right now."
       );
       if (record2.view_url) parts.push(`Case page: ${record2.view_url}`);
-      return ok(parts.join(" "), record2);
+      return ok(parts.join(" "), {
+        id: record2.id,
+        status: record2.status,
+        role: record2.role,
+        current_turn: record2.current_turn,
+        action_required: record2.action_required,
+        next_action: record2.next_action,
+        action_url: record2.action_url,
+        view_url: record2.view_url,
+        question_for_arbitration: record2.question_for_arbitration,
+        financial_demand_usd: moneyString(record2.financial_demand_usd),
+        respondent_name: `${record2.respondent_first_name} ${record2.respondent_last_name ?? ""}`.trim()
+      });
     })
   );
   server.registerTool(
@@ -37165,7 +37439,7 @@ Case page: ${record2.view_url}` : summary, result);
         question_for_arbitration: external_exports.string().min(1).describe("The question the arbitrator is asked to decide."),
         plaintiff_name: external_exports.string().min(1).describe("The claimant's name."),
         respondent_name: external_exports.string().min(1).describe("A single word is treated as an organization; several words as a person's name."),
-        respondent_email: external_exports.string().optional().describe("The respondent's email address. It identifies who the respondent is, so include it whenever the user has it."),
+        respondent_email: external_exports.string().optional().describe("The respondent's email address. It identifies who the respondent is, so include it whenever the user has it. Nobody is emailed."),
         plaintiff_argument: external_exports.string().min(1).describe("The claimant's opening argument."),
         respondent_argument: external_exports.string().min(1).describe("The respondent's answer."),
         plaintiff_rebuttal: external_exports.string().optional(),
@@ -37174,14 +37448,23 @@ Case page: ${record2.view_url}` : summary, result);
         contract_file: fileInputSchema.optional().describe("The contract as a file. Provide this or governing_contract."),
         financial_demand_usd: money,
         other_relief: external_exports.string().optional(),
-        plaintiff_documents: external_exports.array(fileInputSchema).max(20).optional().describe("Evidence for the claimant's opening argument."),
-        respondent_documents: external_exports.array(fileInputSchema).max(20).optional().describe("Evidence for the respondent's answer."),
-        plaintiff_rebuttal_documents: external_exports.array(fileInputSchema).max(20).optional().describe("Evidence for the claimant's rebuttal."),
-        respondent_rebuttal_documents: external_exports.array(fileInputSchema).max(20).optional().describe("Evidence for the respondent's rebuttal."),
+        plaintiff_documents: files("Claimant's evidence."),
+        respondent_documents: files("Respondent's evidence."),
+        plaintiff_rebuttal_documents: files("Evidence for the claimant's rebuttal."),
+        respondent_rebuttal_documents: files("Evidence for the respondent's rebuttal."),
         idempotency_key: idempotencyKey
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
-      _meta: { "openai/fileParams": ["contract_file"] }
+      outputSchema: simulationOutput,
+      annotations: IRREVERSIBLE,
+      _meta: {
+        "openai/fileParams": [
+          "contract_file",
+          "plaintiff_documents",
+          "respondent_documents",
+          "plaintiff_rebuttal_documents",
+          "respondent_rebuttal_documents"
+        ]
+      }
     },
     ({
       contract_file,
@@ -37203,10 +37486,10 @@ Case page: ${record2.view_url}` : summary, result);
       }
       const parts = await resolveParts([
         { field: "contract_file", ticketField: "contract_file_ticket", inputs: contract_file ? [contract_file] : [], allowed: CONTRACT_EXTENSIONS },
-        documents("plaintiff_documents", plaintiff_documents),
-        documents("respondent_documents", respondent_documents),
-        documents("plaintiff_rebuttal_documents", plaintiff_rebuttal_documents),
-        documents("respondent_rebuttal_documents", respondent_rebuttal_documents)
+        documents("plaintiff_documents", plaintiff_documents ?? []),
+        documents("respondent_documents", respondent_documents ?? []),
+        documents("plaintiff_rebuttal_documents", plaintiff_rebuttal_documents ?? []),
+        documents("respondent_rebuttal_documents", respondent_rebuttal_documents ?? [])
       ]);
       const result = await client.postForm(
         "/simulations",
@@ -37214,10 +37497,11 @@ Case page: ${record2.view_url}` : summary, result);
         parts,
         idempotency_key
       );
-      return ok(
-        `Simulation ${result.id} started (${result.status}). Call get_simulation with this ID to wait for the award.`,
-        result
-      );
+      return ok(`Simulation ${result.id} started (${result.status}). Call get_simulation with this ID to wait for the award.`, {
+        id: result.id,
+        status: result.status,
+        page_url: result.page_url
+      });
     })
   );
   server.registerTool(
@@ -37226,10 +37510,11 @@ Case page: ${record2.view_url}` : summary, result);
       title: "Get a simulation's award",
       description: "Use this after run_simulation. Waits briefly for the simulation to finish and returns the award text and links when ready. If it is still processing or retrying, call again.",
       inputSchema: {
-        simulation_id: external_exports.string().regex(/^case_[a-z0-9]+$/i, "Expected an ID starting with case_."),
+        simulation_id: external_exports.string().regex(/^case_[a-z0-9]+$/i, "Expected an ID starting with case_.").describe("The ID returned by run_simulation (case_...)."),
         wait_seconds: external_exports.number().int().min(0).max(50).optional().describe("How long to wait for the award before returning. Defaults to 30.")
       },
-      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
+      outputSchema: simulationOutput,
+      annotations: READ_ONLY
     },
     ({ simulation_id, wait_seconds }) => run(async (client) => {
       const id = simulation_id.toLowerCase();
@@ -37243,33 +37528,50 @@ Case page: ${record2.view_url}` : summary, result);
         return fail(`Simulation ${id} failed: ${simulation.message || "no reason was given."}`);
       }
       if (simulation.status !== "ready") {
-        return ok(`Simulation ${id} is still ${simulation.status}. Call get_simulation again in a moment.`, simulation);
+        return ok(`Simulation ${id} is still ${simulation.status}. Call get_simulation again in a moment.`, {
+          id: simulation.id,
+          status: simulation.status,
+          page_url: simulation.page_url
+        });
       }
       const result = await client.get(`/simulations/${id}/result`);
-      const pdf = result.pdf_url ? `Award PDF (public for 30 days): ${result.pdf_url}` : "The public PDF link has expired; the award text is still in the result.";
-      return ok(`Simulation ${id} is ready. ${pdf}`, { status: "ready", ...result });
+      const award = result.pdf_url ? `Award PDF: ${result.pdf_url}` : `The public award PDF has expired; it is served for 30 days after the award is published. The award text is below, and the simulation page is at ${result.page_url} (sign-in required).`;
+      return ok(`Simulation ${id} is ready. ${award}`, {
+        id,
+        status: "ready",
+        page_url: result.page_url,
+        text: result.text,
+        pdf_url: result.pdf_url
+      });
     })
   );
   server.registerTool(
     "send_feedback",
     {
       title: "Send feedback to DecisionLayer",
-      description: "Use this to tell the DecisionLayer team about a problem or an idea: a tool call that failed, a confusing field, a missing step, or something that worked well. Describe what was attempted and what happened; do not include the user's documents or personal details. The note is tied to the connected account so the team can follow up. Tell the user that feedback was sent.",
+      description: "Use this to tell the DecisionLayer team about a problem with these tools, a confusing step, a missing feature, or something that worked well. The message is sent with the user's name and email, so show the user what you will send and call this only after they agree. Offer it when a tool call failed in a way you could not resolve, or when the user asks to pass something along. One short message per call; include the case ID when it concerns a case. The team reads every message. It is not a support chat: nobody replies through this tool.",
       inputSchema: {
-        message: external_exports.string().min(1).max(4e3).describe("What went wrong, what was confusing, or what would help."),
-        category: external_exports.enum(["bug", "idea", "praise", "other"]).optional().describe("Defaults to other."),
-        case_id: caseId.optional().describe("The case_ or creq_ ID the feedback is about, if any.")
+        message: external_exports.string().min(1).max(4e3).describe(
+          "What happened or what would help, in the user's or your own words. Include the tool name and the error text when reporting a failure. Up to 4000 characters."
+        ),
+        category: external_exports.enum(["bug", "idea", "praise", "other"]).optional().describe("bug, idea, praise, or other. Defaults to other."),
+        case_id: caseId.optional().describe("A case_ or creq_ ID the feedback is about, if any.")
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true }
+      outputSchema: feedbackOutput,
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
     },
     ({ message, category, case_id }) => run(async (client) => {
+      if (!message.trim()) throw new InputError("Feedback message must not be empty.");
       const result = await client.postJson("/feedback", {
         message,
         category: category ?? "other",
         case_id: case_id?.toLowerCase() ?? null,
         client: client.clientLabel
       });
-      return ok(`Feedback ${result.id} was sent to the DecisionLayer team.`, result);
+      return ok(
+        `Feedback ${result.id} recorded. Thank the user; the team reads every message but does not reply through this tool.`,
+        { id: result.id }
+      );
     })
   );
   return server;

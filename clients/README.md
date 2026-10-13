@@ -6,8 +6,8 @@ DecisionLayer's MCP server is a standard remote MCP server:
 - Sign-in: OAuth 2.1 with PKCE. The server advertises itself at
   `/.well-known/oauth-protected-resource/mcp` and registers clients
   dynamically (RFC 7591), so no client ID, secret or API key is needed.
-- Tools: `get_account`, `file_case`, `file_consent_case`, `get_case`,
-  `run_simulation`, `get_simulation`, `send_feedback`.
+- Tools: `get_account`, `get_profile`, `file_case`, `file_consent_case`,
+  `get_case`, `run_simulation`, `get_simulation`, `send_feedback`.
 
 Any client that supports remote MCP servers with OAuth can use it. The files
 in this directory are ready-made configurations for the common ones. On first
@@ -155,7 +155,7 @@ attached to the session.
 only. For a server-side agent that cannot open a browser, run the bundled
 stdio server in this repository with a DecisionLayer API key instead; see
 *Running the tools locally with an API key* in the [main README](../README.md).
-It offers the same seven tools against the same public API.
+It offers the same eight tools against the same public API.
 
 See the DecisionLayer docs for the full picture of what agents can and
 cannot do through these tools, including how human steps such as signing and

@@ -1,6 +1,6 @@
 {
   "name": "decisionlayer-plugin",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "ChatGPT / Codex plugin for bringing a case to arbitration with the DecisionLayer API.",
   "private": true,
   "type": "module",
