@@ -1,7 +1,8 @@
 // End-to-end tests: the bundled MCP server is started over stdio and pointed
 // at a fake DecisionLayer API running on localhost.
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,6 +24,8 @@ let api;
 let baseUrl;
 let requests = [];
 let simulationPolls = 0;
+let busyAttempts = 0;
+const tempDirs = [];
 
 async function readForm(req) {
   const request = new Request("http://localhost" + req.url, {
@@ -39,10 +42,21 @@ async function readForm(req) {
 
 before(async () => {
   api = createServer(async (req, res) => {
+    // Storage behind a direct upload's upload_url. It takes no API key.
+    if (req.method === "PUT") {
+      let bytes = 0;
+      for await (const chunk of req) bytes += chunk.length;
+      requests.push({ method: req.method, path: req.url, headers: req.headers, bytes });
+      return res.writeHead(req.url === "/storage/fail" ? 500 : 200).end();
+    }
     const body = req.method === "POST" ? await readForm(req) : undefined;
     requests.push({ method: req.method, path: req.url, headers: req.headers, body });
     const send = (status, payload) =>
       res.writeHead(status, { "Content-Type": "application/json", "X-Request-ID": "req_abc" }).end(JSON.stringify(payload));
+    const unavailable = () =>
+      res
+        .writeHead(503, { "Content-Type": "application/json", "Retry-After": "0" })
+        .end(JSON.stringify({ error: { status: 503, message: "Service unavailable.", details: [] } }));
 
     if (req.headers.authorization === "Bearer dvarb_bad") {
       return send(401, { error: { status: 401, message: "The API key is not valid.", details: ["Check the key."] } });
@@ -70,6 +84,8 @@ before(async () => {
         if (body.get("respondent_email") === "boom@example.com") {
           return send(500, { error: { status: 500, message: "Internal server error.", details: [] } });
         }
+        if (body.get("respondent_email") === "busy@example.com" && ++busyAttempts === 1) return unavailable();
+        if (body.get("respondent_email") === "down@example.com") return unavailable();
         return send(201, {
           case: {
             id: "case_01abc",
@@ -115,6 +131,22 @@ before(async () => {
         return send(404, { error: { status: 404, message: "Not found.", details: ["Claim the case first."], reason: "not_claimed" } });
       case "GET /api/v1/cases/case_sim1":
         return send(404, { error: { status: 404, message: "Not found.", details: [], reason: "not_found" } });
+      case "GET /api/v1/cases/case_moved":
+        return res.writeHead(301, { Location: `${baseUrl}/api/v1/cases/case_01abc` }).end();
+      case "GET /api/v1/cases/case_html":
+        return res.writeHead(502, { "Content-Type": "text/html" }).end("<h1>Bad gateway</h1>");
+      case "POST /api/v1/uploads": {
+        const [file] = JSON.parse(body).files;
+        return send(201, {
+          uploads: [
+            {
+              upload_url: `${baseUrl}/storage/${file.filename.startsWith("fail") ? "fail" : "ok"}`,
+              content_type: file.content_type,
+              ticket: `tkt_${file.filename}`,
+            },
+          ],
+        });
+      }
       case "POST /api/v1/consent-cases":
         return send(201, {
           case: {
@@ -167,6 +199,8 @@ before(async () => {
         return send(200, { id: "case_sim2", status: "ready", page_url: `${baseUrl}/simulation/h/case_sim2`, result_url: null, message: null });
       case "GET /api/v1/simulations/case_sim2/result":
         return send(200, { id: "case_sim2", case_id: "case_sim2", text: "AWARD: respondent prevails.", published_at: "2026-08-01T00:00:00Z", pdf_url: null, page_url: `${baseUrl}/simulation/h/case_sim2` });
+      case "GET /api/v1/simulations/case_simfail":
+        return send(200, { id: "case_simfail", status: "failed", page_url: `${baseUrl}/simulation/h/case_simfail`, result_url: null, message: "The arbitrator could not be reached." });
       case "POST /api/v1/feedback":
         return send(201, { id: "fb_01abc", received_at: "2026-10-08T12:00:00Z", message: "Thanks, we received your feedback." });
       default:
@@ -177,11 +211,15 @@ before(async () => {
   baseUrl = `http://127.0.0.1:${api.address().port}`;
 });
 
-after(() => api.close());
+after(() => {
+  api.close();
+  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
 
 beforeEach(() => {
   requests = [];
   simulationPolls = 0;
+  busyAttempts = 0;
 });
 
 async function connect(env) {
@@ -212,10 +250,30 @@ async function call(env, name, args = {}) {
 
 const apiCalls = () => requests.filter((request) => request.path !== "/api/v1/me");
 
+function tempDir() {
+  const dir = mkdtempSync(join(tmpdir(), "dl-"));
+  tempDirs.push(dir);
+  return dir;
+}
+
 function tempFile(name, contents) {
-  const path = join(mkdtempSync(join(tmpdir(), "dl-")), name);
+  const path = join(tempDir(), name);
   writeFileSync(path, contents);
   return path;
+}
+
+/** A sparse file of `size` bytes: it reports its full size without filling the disk. */
+function sparseFile(name, size) {
+  const path = tempFile(name, "%PDF-1.4");
+  truncateSync(path, size);
+  return path;
+}
+
+/** A PDF just large enough to go through POST /uploads. */
+function largePdf(name) {
+  const bytes = Buffer.alloc(8 * 1024 * 1024);
+  bytes.write("%PDF-1.4");
+  return { path: tempFile(name, bytes), size: bytes.length };
 }
 
 const CASE = {
@@ -256,6 +314,14 @@ test("lists the tools", async () => {
     tools.map((tool) => tool.name).sort(),
     ["file_case", "file_consent_case", "get_account", "get_case", "get_profile", "get_simulation", "run_simulation", "send_feedback"],
   );
+});
+
+test("the server reports the package version", async () => {
+  const client = await connect({ DECISIONLAYER_API_KEY: "dvarb_live" });
+  const { version } = client.getServerVersion();
+  await client.close();
+  const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url)));
+  assert.equal(version, pkg.version);
 });
 
 test("the tools match the hosted server's contract", async () => {
@@ -337,6 +403,15 @@ test("every API request identifies the plugin and the user", async () => {
   assert.match(request.headers["user-agent"], /^decisionlayer-chatgpt-plugin\/.*user=user_123/);
 });
 
+test("the account is looked up once per key, not on every call", async () => {
+  const client = await connect({ DECISIONLAYER_API_KEY: "dvarb_live" });
+  await client.callTool({ name: "get_case", arguments: { case_id: "case_01abc" } });
+  await client.callTool({ name: "get_case", arguments: { case_id: "case_01abc" } });
+  await client.close();
+  assert.equal(requests.filter((request) => request.path === "/api/v1/me").length, 1);
+  assert.equal(apiCalls().length, 2);
+});
+
 test("DECISIONLAYER_USER_ID overrides the user identifier", async () => {
   await call({ DECISIONLAYER_API_KEY: "dvarb_live", DECISIONLAYER_USER_ID: "acme-42" }, "file_case", CASE);
   assert.equal(apiCalls()[0].headers["x-decisionlayer-user"], "acme-42");
@@ -415,6 +490,83 @@ test("a file name passed as file_id names the file; a ChatGPT file ID does not",
   const sniffed = tempFile("lease", "%PDF-1.4 fake");
   await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", { ...rest, contract_file: { path: sniffed, file_id: "file-abc123" } });
   assert.equal(apiCalls()[0].body.get("contract_file").name, "lease.pdf");
+});
+
+test("every accepted type is recognised from its leading bytes", async () => {
+  const bytes = (text) => Buffer.from(text, "latin1");
+  const files = [
+    ["scan", bytes("PK\x03\x04\x14\x00\x06\x00word/document.xml"), "scan.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+    ["photo", bytes("\xff\xd8\xff\xe0\x00\x10JFIF"), "photo.jpg", "image/jpeg"],
+    ["clip", bytes("\x00\x00\x00\x18ftypisom"), "clip.mp4", "video/mp4"],
+    ["movie", bytes("\x00\x00\x00\x14ftypqt  "), "movie.mov", "video/quicktime"],
+    ["tape", bytes("RIFF\x24\x00\x00\x00AVI LIST"), "tape.avi", "video/x-msvideo"],
+    ["letter", bytes("{\\rtf1\\ansi"), "letter.rtf", "application/rtf"],
+  ];
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", {
+    ...CASE,
+    evidence: files.map(([name, contents]) => ({ path: tempFile(name, contents) })),
+  });
+  assert.equal(result.isError, undefined);
+  assert.deepEqual(
+    apiCalls()[0].body.getAll("evidence").map((file) => [file.name, file.type]),
+    files.map(([, , name, type]) => [name, type]),
+  );
+});
+
+test("local files that cannot be sent are refused before calling the API", async () => {
+  const empty = tempFile("empty.pdf", "");
+  const missing = join(tempDir(), "missing.pdf");
+  const cases = [
+    [{ path: empty }, /contract_file: the file is empty/],
+    [{ path: sparseFile("huge.pdf", 100 * 1024 * 1024 + 1) }, /larger than 100 MiB/],
+    [{ path: missing }, /no readable file at/],
+    [{ path: tempDir() }, /no readable file at/],
+    [{ path: tempFile("notes", "Just some words") }, /'notes' is not an accepted file type/],
+    [{ path: empty, download_url: "https://example.com/lease.pdf" }, /exactly one of download_url or path/],
+    [{ file_id: "lease.pdf" }, /exactly one of download_url or path/],
+  ];
+  const { contract_text, ...rest } = CASE;
+  for (const [contract_file, error] of cases) {
+    const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", { ...rest, contract_file });
+    assert.equal(result.isError, true, JSON.stringify(contract_file));
+    assert.match(result.content[0].text, error, JSON.stringify(contract_file));
+  }
+  assert.equal(requests.length, 0);
+});
+
+test("the files in one call may total at most 256 MiB", async () => {
+  const evidence = ["a.pdf", "b.pdf", "c.pdf"].map((name) => ({ path: sparseFile(name, 100 * 1024 * 1024) }));
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", { ...CASE, evidence });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /evidence\[2\]: the files in this call together exceed 256 MiB/);
+  assert.equal(requests.length, 0);
+});
+
+test("a file of 8 MiB or more is uploaded to storage and sent as a ticket", async () => {
+  const { path, size } = largePdf("Lease.pdf");
+  const { contract_text, ...rest } = CASE;
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", { ...rest, contract_file: { path } });
+  assert.equal(result.isError, undefined);
+
+  const [prepare, upload, filing] = apiCalls();
+  assert.equal(prepare.path, "/api/v1/uploads");
+  assert.deepEqual(JSON.parse(prepare.body), { files: [{ filename: "Lease.pdf", size, content_type: "application/pdf" }] });
+  assert.equal(upload.path, "/storage/ok");
+  assert.equal(upload.bytes, size);
+  assert.equal(upload.headers["content-type"], "application/pdf");
+  assert.equal(upload.headers.authorization, undefined, "the API key is not sent to storage");
+  assert.equal(filing.path, "/api/v1/cases");
+  assert.equal(filing.body.get("contract_file_ticket"), "tkt_Lease.pdf");
+  assert.equal(filing.body.has("contract_file"), false);
+});
+
+test("a failed upload to storage stops the filing", async () => {
+  const { path } = largePdf("fail.pdf");
+  const { contract_text, ...rest } = CASE;
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", { ...rest, contract_file: { path } });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /Uploading 'fail\.pdf' failed with HTTP 500/);
+  assert.equal(apiCalls().some((request) => request.path === "/api/v1/cases"), false);
 });
 
 test("file_case rejects unsupported file types before calling the API", async () => {
@@ -522,6 +674,53 @@ test("an API server error says to try again later", async () => {
   assert.match(result.content[0].text, /Try again in a few minutes/);
 });
 
+test("a 503 is retried with the same idempotency key and the whole form", async () => {
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", { ...CASE, respondent_email: "busy@example.com" });
+  assert.equal(result.isError, undefined);
+  const filings = apiCalls();
+  assert.equal(filings.length, 2);
+  for (const filing of filings) {
+    assert.equal(filing.headers["idempotency-key"], CASE.idempotency_key);
+    assert.match(await filing.body.get("contract_file").text(), /Section 12/);
+  }
+});
+
+test("an API that stays unavailable is reported after three attempts", async () => {
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", { ...CASE, respondent_email: "down@example.com" });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /DecisionLayer error 503/);
+  assert.match(result.content[0].text, /Try again in a few minutes/);
+  assert.equal(apiCalls().length, 3);
+});
+
+test("an error page that is not JSON is reported by its status", async () => {
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "get_case", { case_id: "case_html" });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /DecisionLayer error 502: DecisionLayer returned HTTP 502\./);
+  assert.match(result.content[0].text, /Try again in a few minutes/);
+});
+
+test("an API redirect is not followed", async () => {
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "get_case", { case_id: "case_moved" });
+  assert.equal(result.isError, true);
+  assert.ok(apiCalls().length > 0);
+  assert.ok(apiCalls().every((request) => request.path === "/api/v1/cases/case_moved"), "the redirect target is never requested");
+});
+
+test("an unreachable API is reported with its address", async () => {
+  const closed = createServer();
+  await new Promise((resolve) => closed.listen(0, "127.0.0.1", resolve));
+  const unreachable = `http://127.0.0.1:${closed.address().port}`;
+  await new Promise((resolve) => closed.close(resolve));
+  const result = await call(
+    { DECISIONLAYER_API_KEY: "dvarb_live", DECISIONLAYER_BASE_URL: unreachable },
+    "get_case",
+    { case_id: "case_01abc" },
+  );
+  assert.equal(result.isError, true);
+  assert.ok(result.content[0].text.includes(`Could not reach DecisionLayer at ${unreachable}`), result.content[0].text);
+});
+
 const CONSENT = {
   question_for_arbitration: "Who owes whom for the shared fence?",
   financial_demand_usd: "1200.50",
@@ -559,6 +758,17 @@ test("file_consent_case creates a consent case and returns the sign link as acti
   );
 });
 
+test("file_consent_case takes only documents as contracts", async () => {
+  const photo = tempFile("photo.png", "\x89PNG\r\n\x1a\nfake");
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_consent_case", {
+    ...CONSENT,
+    contract_files: [{ path: photo }],
+  });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /contract_files: 'photo\.png' is not an accepted file type\. Accepted: \.pdf, \.docx, \.rtf, \.txt\./);
+  assert.equal(requests.length, 0);
+});
+
 test("file_consent_case with a test key points at the dashboard", async () => {
   const result = await call({ DECISIONLAYER_API_KEY: "dvarb_test_abc" }, "file_consent_case", CONSENT);
   assert.equal(result.isError, undefined);
@@ -593,6 +803,19 @@ test("get_case says whose turn it is on a case awaiting a response", async () =>
   });
 });
 
+test("get_case lowercases the ID", async () => {
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "get_case", { case_id: "CASE_01ABC" });
+  assert.equal(result.isError, undefined);
+  assert.equal(apiCalls()[0].path, "/api/v1/cases/case_01abc");
+});
+
+test("get_case rejects an ID that is not a case or consent case ID", async () => {
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "get_case", { case_id: "sim_123" });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /Expected an ID starting with case_ or creq_/);
+  assert.equal(requests.length, 0);
+});
+
 test("get_case explains the API's reason for a 404", async () => {
   const unclaimed = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "get_case", { case_id: "case_unclaimed" });
   assert.equal(unclaimed.isError, true);
@@ -607,6 +830,14 @@ test("run_simulation with a test key is stopped with guidance", async () => {
   const result = await call({ DECISIONLAYER_API_KEY: "dvarb_test_abc" }, "run_simulation", SIMULATION);
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /need a live API key/);
+  assert.equal(apiCalls().length, 0);
+});
+
+test("run_simulation needs the contract as text or a file", async () => {
+  const { governing_contract, ...rest } = SIMULATION;
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "run_simulation", rest);
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /governing_contract text or as contract_file/);
   assert.equal(apiCalls().length, 0);
 });
 
@@ -659,6 +890,27 @@ test("get_simulation still returns the award text after the public PDF expires",
   assert.equal("pdf_url" in result.structuredContent, false);
 });
 
+test("get_simulation returns while the award is still being written", async () => {
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "get_simulation", { simulation_id: "case_sim1", wait_seconds: 0 });
+  assert.equal(result.isError, undefined);
+  assert.match(result.content[0].text, /still processing\. Call get_simulation again/);
+  assert.deepEqual(result.structuredContent, { id: "case_sim1", status: "processing", page_url: `${baseUrl}/simulation/h/case_sim1` });
+  assert.equal(apiCalls().length, 1, "the award is not fetched");
+});
+
+test("get_simulation reports a failed simulation with its reason", async () => {
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "get_simulation", { simulation_id: "case_simfail", wait_seconds: 0 });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /Simulation case_simfail failed: The arbitrator could not be reached\./);
+});
+
+test("send_feedback refuses a blank message", async () => {
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "send_feedback", { message: "   " });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /must not be empty/);
+  assert.equal(requests.length, 0);
+});
+
 test("send_feedback posts a note that names the plugin", async () => {
   const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "send_feedback", {
     message: "file_case rejected a .docx contract that opens fine in Word.",
@@ -686,6 +938,27 @@ test("a missing key explains how to set one up", async () => {
   assert.equal(requests.length, 0);
 });
 
+test("the server will not start with a base URL that is not https", () => {
+  for (const [url, error] of [
+    ["http://example.com", /DECISIONLAYER_BASE_URL must use https/],
+    ["not a url", /DECISIONLAYER_BASE_URL is not a valid URL/],
+  ]) {
+    const result = spawnSync(process.execPath, [SERVER], {
+      env: { PATH: process.env.PATH, DECISIONLAYER_BASE_URL: url },
+      input: "",
+      encoding: "utf8",
+      timeout: 10_000,
+    });
+    assert.equal(result.status, 1, url);
+    assert.match(result.stderr, error, url);
+  }
+});
+
+test("the bare domain is rewritten to www, so a POST is not redirected", async () => {
+  const result = await call({ DECISIONLAYER_BASE_URL: "https://decisionlayer.ai/" }, "get_account");
+  assert.match(result.content[0].text, /Create one at https:\/\/www\.decisionlayer\.ai\/settings\/api-keys/);
+});
+
 test("the key can come from a key file", async () => {
   const keyFile = join(mkdtempSync(join(tmpdir(), "dl-")), "api_key");
   writeFileSync(keyFile, "dvarb_live\n");
@@ -697,32 +970,4 @@ test("an invalid key is reported clearly", async () => {
   const result = await call({ DECISIONLAYER_API_KEY: "dvarb_bad" }, "get_account");
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /DecisionLayer error 401/);
-});
-
-test("the plugin manifests stay in sync", () => {
-  const root = new URL("../plugins/decisionlayer/", import.meta.url);
-  const portable = JSON.parse(readFileSync(new URL("plugin.json", root)));
-  const legacy = JSON.parse(readFileSync(new URL(".codex-plugin/plugin.json", root)));
-  const claude = JSON.parse(readFileSync(new URL(".claude-plugin/plugin.json", root)));
-  const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url)));
-  for (const field of ["name", "version", "description"]) {
-    assert.equal(legacy[field], portable[field], field);
-    assert.equal(claude[field], portable[field], `claude ${field}`);
-  }
-  assert.equal(portable.version, pkg.version);
-  assert.deepEqual(legacy.interface, portable.extensions["com.openai"].interface);
-});
-
-test("every client configuration points at the same hosted server", () => {
-  const root = new URL("../", import.meta.url);
-  const read = (path) => JSON.parse(readFileSync(new URL(path, root)));
-  const hosted = read("plugins/decisionlayer/mcp.json").mcpServers.decisionlayer.url;
-  assert.match(hosted, /^https:\/\/www\.decisionlayer\.ai\/mcp$/);
-  assert.equal(read("plugins/decisionlayer/.mcp.json").mcpServers.decisionlayer.url, hosted);
-  assert.equal(read("clients/claude-code/.mcp.json").mcpServers.decisionlayer.url, hosted);
-  assert.equal(read("clients/cursor/mcp.json").mcpServers.decisionlayer.url, hosted);
-  assert.equal(read("clients/vscode/mcp.json").servers.decisionlayer.url, hosted);
-  assert.equal(read("clients/claude-desktop/claude_desktop_config.json").mcpServers.decisionlayer.args.at(-1), hosted);
-  const marketplace = read(".claude-plugin/marketplace.json");
-  assert.equal(marketplace.plugins[0].source, "./plugins/decisionlayer");
 });

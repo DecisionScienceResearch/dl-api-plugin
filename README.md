@@ -136,7 +136,7 @@ In local mode a file object may give `path`, a file on your computer, instead of
 
 ```bash
 npm install
-npm test          # builds the local server, then runs its tests against a fake DecisionLayer API
+npm test          # builds the local server, runs its tests against a fake DecisionLayer API, and checks the manifests, skills and doc links
 npm run typecheck
 npm run inspect   # opens the MCP Inspector against the local server
 ```
@@ -156,10 +156,11 @@ plugins/decisionlayer/
   assets/                          logo and icon
 clients/                           configurations for Claude Code, Claude Desktop, Cursor, VS Code
 src/                               local server source (TypeScript)
-test/                              its end-to-end tests
+test/                              end-to-end tests of the local server, and packaging checks
+.github/workflows/ci.yml           runs the tests on Node 20, 22 and 24, the typecheck, the bundle check and Claude Code's plugin validator
 ```
 
-`mcp/server.mjs` is a single bundled file so the local mode runs straight from a git install with no `npm install`. After changing anything in `src/`, run `npm run build` and commit the result. Keep the version in `package.json`, all three `plugin.json` files and `src/config.ts` the same; the tests check the manifests.
+`mcp/server.mjs` is a single bundled file so the local mode runs straight from a git install with no `npm install`. After changing anything in `src/`, run `npm run build` and commit the result. Keep the version in `package.json`, all three `plugin.json` files and `src/config.ts` the same; the tests check all of them. CI fails if the committed bundle differs from what `src/` builds to.
 
 ## Scope
 
