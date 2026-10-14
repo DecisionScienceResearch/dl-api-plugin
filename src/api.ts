@@ -1,12 +1,16 @@
-import { randomUUID } from "node:crypto";
 import { PLUGIN_NAME, PLUGIN_VERSION, type Config } from "./config.js";
-import type { ResolvedFile } from "./files.js";
+import { InputError, type ResolvedFile } from "./files.js";
 
 /** Files at or above this size go through POST /uploads instead of the multipart body. */
 export const DIRECT_UPLOAD_BYTES = 8 * 1024 * 1024;
 
 const REQUEST_TIMEOUT_MS = 120_000;
 const UPLOAD_TIMEOUT_MS = 300_000;
+
+// The API's two 409 messages for a refused Idempotency-Key. postForm turns them
+// into advice on what the retry means.
+const KEY_REUSED_MESSAGE = "This Idempotency-Key was already used for a different request.";
+const IN_PROGRESS_MESSAGE = "A request with this Idempotency-Key is still in progress.";
 
 /** An error response from the DecisionLayer API (or a failure to reach it). */
 export class ApiError extends Error {
@@ -170,17 +174,45 @@ export class DecisionLayerClient {
     return upload.ticket;
   }
 
+  /** Says what a refused idempotency key means for the request, if it was refused. */
+  private retryAdvice(error: unknown): string | undefined {
+    if (!(error instanceof ApiError) || error.status !== 409) return undefined;
+    if (error.message === IN_PROGRESS_MESSAGE) {
+      return (
+        "The first attempt with this idempotency_key is still running. Wait a minute, then call again with the same " +
+        "idempotency_key and the same arguments to get its result."
+      );
+    }
+    if (error.message === KEY_REUSED_MESSAGE) {
+      const large = DIRECT_UPLOAD_BYTES / (1024 * 1024);
+      return (
+        "This idempotency_key was already used for a request with different arguments or files. If this is a retry after " +
+        "an error or timeout, the first attempt may have gone through: a retry that includes a file of " +
+        `${large} MB or more always looks different, because the file is uploaded again. Ask the user to check their ` +
+        `dashboard at ${this.config.baseUrl}/dashboard before trying again with a new idempotency_key.`
+      );
+    }
+    return undefined;
+  }
+
   /**
    * POSTs a multipart form. Blank fields are left out so the API applies its
-   * own defaults. `idempotencyKey` makes a retried call return the original
-   * result instead of filing twice.
+   * own defaults. The caller chooses `idempotencyKey` and sends it again on a
+   * retry, so a retried call returns the original result instead of filing
+   * twice; a key made up here would be lost with a call that timed out.
    */
   async postForm<T>(
     path: string,
     fields: Record<string, string | undefined>,
     files: FilePart[],
-    idempotencyKey: string = randomUUID(),
+    idempotencyKey: string,
   ): Promise<T> {
+    const key = idempotencyKey.trim();
+    if (!key) {
+      throw new InputError(
+        "idempotency_key is required: pass a new unique value, such as a UUID, and reuse it only to retry this request.",
+      );
+    }
     const tickets: [string, string][] = [];
     const inline: FilePart[] = [];
     for (const part of files) {
@@ -202,6 +234,12 @@ export class DecisionLayerClient {
       }
       return form;
     };
-    return this.send<T>("POST", path, { "Idempotency-Key": idempotencyKey }, build, await this.userId());
+    try {
+      return await this.send<T>("POST", path, { "Idempotency-Key": key }, build, await this.userId());
+    } catch (error) {
+      const advice = this.retryAdvice(error);
+      if (advice) throw new InputError(advice);
+      throw error;
+    }
   }
 }

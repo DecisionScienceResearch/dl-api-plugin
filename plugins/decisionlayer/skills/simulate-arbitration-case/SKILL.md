@@ -15,7 +15,7 @@ Call `get_account`.
 ## 2. Tell the user two things before running
 
 - **The award is published.** The finished award gets a public link that works for 30 days. Anyone with the link can read it. If the user is simulating a real dispute and wants privacy, offer to replace real names and identifying details with made-up ones.
-- **Simulations are limited.** Each account has a monthly allowance.
+- **Simulations are limited.** Each account has a monthly allowance, 10 a month unless the account has a larger plan.
 
 ## 3. Get a case to simulate
 
@@ -30,13 +30,15 @@ Either:
   - optionally rebuttals (`plaintiff_rebuttal`, `respondent_rebuttal`), an amount (`financial_demand_usd`) and non-monetary relief (`other_relief`),
   - optionally evidence files for each part: `plaintiff_documents` and `respondent_documents` for the arguments, `plaintiff_rebuttal_documents` and `respondent_rebuttal_documents` for the rebuttals.
 
+Files go in as file objects with `download_url` and `file_id` (ChatGPT fills these in for attachments; elsewhere use the link and the file name). Evidence the user pastes as text belongs in the argument or rebuttal it supports. One call takes at most 10 files, 256 MiB in total.
+
 A simulation needs the respondent's side too. If the user only knows their own side, ask what they expect the other party to say. If they want you to draft the other side's best argument, you may, but show it to them first and label it as your draft. Do not invent contract terms or facts the user did not give you.
 
 Use a respondent name of two or more words for a person. A single-word name is treated as an organization.
 
 ## 4. Run it
 
-1. Call `run_simulation`. Keep the returned ID.
+1. Call `run_simulation` with a new `idempotency_key` (a UUID). Keep the returned ID. If the call times out or fails without a clear answer, retry with the same key and the same arguments, so the run is not counted twice. If the tool says the key was already used with different arguments, the first run may have started: ask the user to check their dashboard before running again with a new key.
 2. Call `get_simulation` with that ID. It waits up to about 30 seconds per call. If the status is still `processing` or `retrying`, tell the user it is still working and call again. Most simulations finish within a few minutes.
 3. If the status is `failed`, show the message and offer to run it again.
 4. If `run_simulation` fails with a 429, the account's monthly allowance is used up; the message says so. Do not retry.
@@ -46,7 +48,9 @@ Use a respondent name of two or more words for a person. A single-word name is t
 When the simulation is ready:
 
 - Summarize who prevailed, what was awarded, and the main reasons, using only what the award says.
-- Give the user the `pdf_url` (public link to the award, served for 30 days) and the `page_url` (requires signing in to DecisionLayer). After the 30 days `pdf_url` is null; the award `text` stays available through `get_simulation`.
+- Give the user the `pdf_url` (public link to the award, served for 30 days) and the `page_url` (requires signing in to DecisionLayer). After the 30 days the result has no `pdf_url` and says the PDF has expired; the award `text` stays available through `get_simulation`.
 - Remind them this was a simulation. It is not a binding award and not legal advice.
 
 If they want to bring the dispute for real, offer the `file-arbitration-case` skill (they have an arbitration clause) or the `file-consent-case` skill (they do not).
+
+If a tool fails in a way you cannot fix, offer to report it with `send_feedback`: the tool name, the error text and any reference or case ID. Show the user the message first and send it only if they agree; it carries their name and email. Nobody replies through it.

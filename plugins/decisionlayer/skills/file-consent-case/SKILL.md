@@ -24,14 +24,14 @@ Required:
 | The other party's name | `respondent_first_name`, `respondent_last_name` |
 | The other party's email | `respondent_email` |
 
-Optional: `financial_demand_usd`, `other_relief`, `contract_files` and `supporting_documents`.
+Optional: `financial_demand_usd`, `other_relief`, `contract_files`, `supporting_documents`, and `contract_text` or `supporting_text` for material the user pasted.
 
 Details that change what is required:
 
 - **The other party is a company**: set `respondent_type` to `organization` and put the company name in `respondent_first_name`. A contact person can go in `respondent_contact_first_name` and `respondent_contact_last_name`.
 - **The user files for a company**: set `claimant_type` to `organization`, put the company name in `claimant_first_name`, and collect `claimant_contact_first_name` and `claimant_contact_last_name`.
 - The claimant's name and email default to the account's. The respondent's email must be different from the claimant's.
-- For documents, use `download_url` for a file the user attached or linked, or `text` for pasted content.
+- **Documents**: files the user attached or linked go in `contract_files` (contracts) or `supporting_documents` (anything else) as file objects with `download_url` and `file_id` (ChatGPT fills these in for attachments; elsewhere use the link and the file name). Text the user pasted goes in `contract_text` or `supporting_text`. One call takes at most 10 files, 256 MiB in total and 100 MiB each.
 
 ## 3. Confirm before filing
 
@@ -39,17 +39,22 @@ Show a summary: both parties, the question, the amount, and any files. Say plain
 
 ## 4. File and explain what happens next
 
-Call `file_consent_case`. If the call times out or fails without a clear answer, retry with the same `idempotency_key` and the same arguments. A 409 on the retry means the first attempt is still running: wait a minute and retry again.
+Call `file_consent_case`. Generate a new `idempotency_key` (a UUID) for this filing and keep it. If the call times out or fails without a clear answer, retry with the same key and the same arguments, so nothing is filed twice; a new key would create a second consent case.
 
-After a **live** filing, give the user the `sign_url` and explain:
+- If the tool says the first attempt is still running, wait a minute and retry with the same key.
+- If it says the key was already used with different arguments or files, the first attempt may have gone through. Ask the user to check their dashboard before trying again with a new key.
+
+After a **live** filing, give the user the `action_url` and explain:
 
 1. They sign and pay on the DecisionLayer website.
 2. DecisionLayer then emails the other party an invitation.
 3. The case goes ahead only if the other party accepts and signs.
 
-After a **test** filing, the case comes back with status `paid` and no `sign_url`: signing and payment were recorded for the user and no email was sent.
+After a **test** filing, the case comes back with status `paid` and its `action_url` is the dashboard: signing and payment were recorded for the user and no email was sent.
 
-Give the user the case ID (it starts with `creq_`) and the `view_url` of the case page. Use `get_case` if they ask for the status later. `fully_executed` is the final status, reached once both parties have signed; a consent case keeps its `creq_` ID and does not turn into a `case_` case.
+Give the user the case ID (it starts with `creq_`) and the `dashboard_url`. Use `get_case` if they ask for the status later; it also returns the case page (`view_url`). `fully_executed` is the final status, reached once both parties have signed; a consent case keeps its `creq_` ID and does not turn into a `case_` case.
+
+If a tool fails in a way you cannot fix, offer to report it with `send_feedback`: the tool name, the error text and any reference or case ID. Show the user the message first and send it only if they agree; it carries their name and email. Nobody replies through it.
 
 ## Limits
 

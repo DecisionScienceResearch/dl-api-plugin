@@ -61,6 +61,15 @@ before(async () => {
             error: { status: 422, message: "Your request could not be processed.", details: ["Field 'respondent_email' is not a valid email."] },
           });
         }
+        if (body.get("respondent_email") === "reused@example.com") {
+          return send(409, { error: { status: 409, message: "This Idempotency-Key was already used for a different request.", details: [] } });
+        }
+        if (body.get("respondent_email") === "running@example.com") {
+          return send(409, { error: { status: 409, message: "A request with this Idempotency-Key is still in progress.", details: [] } });
+        }
+        if (body.get("respondent_email") === "boom@example.com") {
+          return send(500, { error: { status: 500, message: "Internal server error.", details: [] } });
+        }
         return send(201, {
           case: {
             id: "case_01abc",
@@ -88,7 +97,19 @@ before(async () => {
           next_action: null,
           action_url: null,
           view_url: `${baseUrl}/cases/case_01abc`,
+          question_for_arbitration: "Must the deposit be returned?",
+          financial_demand_usd: "3500.00",
+          argument: "The lease ended and the unit was left clean.",
+          claimant_email: "sam@example.com",
+          respondent_type: "individual",
+          respondent_first_name: "Jordan",
+          respondent_last_name: "Chen",
+          respondent_email: "jordan@example.com",
+          signed_at: "2026-10-01T00:00:00Z",
+          paid_at: "2026-10-01T00:00:00Z",
           test: false,
+          created_at: "2026-10-01T00:00:00Z",
+          updated_at: "2026-10-02T00:00:00Z",
         });
       case "GET /api/v1/cases/case_unclaimed":
         return send(404, { error: { status: 404, message: "Not found.", details: ["Claim the case first."], reason: "not_claimed" } });
@@ -118,6 +139,15 @@ before(async () => {
           next_action: "sign_terms",
           action_url: `${baseUrl}/sign`,
           view_url: `${baseUrl}/consent/creq_01abc`,
+          question_for_arbitration: "Who owes whom for the shared fence?",
+          financial_demand_usd: "0.00",
+          respondent_type: "organization",
+          respondent_first_name: "Acme",
+          respondent_last_name: "",
+          respondent_email: "legal@acme.example",
+          contract_file_paths: ["consent/creq_01abc/contract.pdf"],
+          supporting_document_paths: [],
+          test: false,
         });
       case "POST /api/v1/simulations":
         return send(201, {
@@ -182,10 +212,16 @@ async function call(env, name, args = {}) {
 
 const apiCalls = () => requests.filter((request) => request.path !== "/api/v1/me");
 
+function tempFile(name, contents) {
+  const path = join(mkdtempSync(join(tmpdir(), "dl-")), name);
+  writeFileSync(path, contents);
+  return path;
+}
+
 const CASE = {
   question_for_arbitration: "Must the deposit be returned?",
   argument: "The lease ended and the unit was left clean.",
-  contract_file: { text: "LEASE. Section 12: disputes go to arbitration." },
+  contract_text: "LEASE. Section 12: disputes go to arbitration.",
   claimant_affirmation: true,
   financial_demand_usd: 3500,
   respondent_first_name: "Jordan",
@@ -199,6 +235,17 @@ const CASE = {
   claimant_city: "Austin",
   claimant_state: "TX",
   claimant_zipcode: "78702",
+  idempotency_key: "4f9a3c1e-0b7d-4e2a-9c55-1d2e3f4a5b6c",
+};
+
+const SIMULATION = {
+  question_for_arbitration: "Q",
+  plaintiff_name: "Sam Rivera",
+  respondent_name: "Jordan Chen",
+  plaintiff_argument: "A",
+  respondent_argument: "B",
+  governing_contract: "Contract text",
+  idempotency_key: "sim-key-1",
 };
 
 test("lists the tools", async () => {
@@ -207,22 +254,76 @@ test("lists the tools", async () => {
   await client.close();
   assert.deepEqual(
     tools.map((tool) => tool.name).sort(),
-    ["file_case", "file_consent_case", "get_account", "get_case", "get_simulation", "run_simulation", "send_feedback"],
+    ["file_case", "file_consent_case", "get_account", "get_case", "get_profile", "get_simulation", "run_simulation", "send_feedback"],
   );
+});
+
+test("the tools match the hosted server's contract", async () => {
+  const client = await connect({ DECISIONLAYER_API_KEY: "dvarb_live" });
+  const { tools } = await client.listTools();
+  await client.close();
+  const byName = Object.fromEntries(tools.map((tool) => [tool.name, tool]));
+
+  for (const tool of tools) assert.ok(tool.outputSchema, `${tool.name} declares its output`);
+
+  const writes = ["file_case", "file_consent_case", "run_simulation"];
+  for (const name of writes) {
+    assert.equal(byName[name].annotations.destructiveHint, true, `${name} is destructive`);
+    assert.ok(byName[name].inputSchema.required.includes("idempotency_key"), `${name} requires an idempotency_key`);
+  }
+  for (const name of ["get_account", "get_profile", "get_case", "get_simulation"]) {
+    assert.equal(byName[name].annotations.readOnlyHint, true, `${name} is read-only`);
+  }
+
+  // Every file argument is declared as a file param and takes the hosted file object.
+  const fileParams = {
+    file_case: ["contract_file", "evidence"],
+    file_consent_case: ["contract_files", "supporting_documents"],
+    run_simulation: ["contract_file", "plaintiff_documents", "respondent_documents", "plaintiff_rebuttal_documents", "respondent_rebuttal_documents"],
+  };
+  for (const [name, params] of Object.entries(fileParams)) {
+    assert.deepEqual(byName[name]._meta["openai/fileParams"], params);
+    for (const param of params) {
+      const schema = byName[name].inputSchema.properties[param];
+      const object = schema.type === "array" ? schema.items : schema;
+      assert.deepEqual(Object.keys(object.properties).sort(), ["download_url", "file_id", "file_name", "mime_type", "path"], `${name}.${param}`);
+    }
+  }
+  assert.ok(byName.file_case.inputSchema.properties.contract_text);
+  assert.ok(byName.file_case.inputSchema.properties.evidence_text);
+  assert.ok(byName.file_consent_case.inputSchema.properties.contract_text);
+  assert.ok(byName.file_consent_case.inputSchema.properties.supporting_text);
+
+  assert.equal(byName.get_profile._meta["openai/profile"], true);
+  assert.equal(byName.get_account._meta?.["openai/profile"], undefined);
+  assert.equal(byName.get_profile.outputSchema.additionalProperties, false);
 });
 
 test("get_account reports the account and key mode", async () => {
   const result = await call({ DECISIONLAYER_API_KEY: "dvarb_test_abc" }, "get_account");
   assert.equal(result.isError, undefined);
-  assert.equal(result.structuredContent.key_mode, "test");
-  assert.equal(result.structuredContent.account.email, "sam@example.com");
+  assert.deepEqual(result.structuredContent, {
+    name: "Sam Rivera",
+    email: "sam@example.com",
+    can_file_cases: true,
+    dashboard_url: `${baseUrl}/dashboard`,
+    key_mode: "test",
+  });
   assert.match(result.content[0].text, /may file full cases/);
+  assert.match(result.content[0].text, /run_simulation needs a live key/);
+});
+
+test("get_profile returns only the account's ID, name and email", async () => {
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "get_profile");
+  assert.equal(result.isError, undefined);
+  assert.deepEqual(result.structuredContent, { id: "user_123", name: "Sam Rivera", email: "sam@example.com" });
+  assert.deepEqual(JSON.parse(result.content[0].text), result.structuredContent);
 });
 
 test("get_account says when the account is not approved to file full cases", async () => {
   const result = await call({ DECISIONLAYER_API_KEY: "dvarb_nofiling" }, "get_account");
   assert.equal(result.isError, undefined);
-  assert.equal(result.structuredContent.account.can_file_cases, false);
+  assert.equal(result.structuredContent.can_file_cases, false);
   assert.match(result.content[0].text, /not yet approved to file full cases/);
   assert.match(result.content[0].text, /casemanager@decisionlayer\.ai/);
 });
@@ -242,15 +343,20 @@ test("DECISIONLAYER_USER_ID overrides the user identifier", async () => {
   assert.equal(requests.length, 1, "no /me lookup is needed");
 });
 
-test("file_case sends a multipart filing with the contract and an idempotency key", async () => {
+test("file_case sends a multipart filing with the contract and the caller's idempotency key", async () => {
   const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", CASE);
   assert.equal(result.isError, undefined);
   assert.match(result.content[0].text, /not active yet/);
-  assert.equal(result.structuredContent.case.id, "case_01abc");
+  assert.deepEqual(result.structuredContent, {
+    id: "case_01abc",
+    status: "awaiting_signature",
+    action_url: `${baseUrl}/cases/case_01abc/terms`,
+    dashboard_url: `${baseUrl}/dashboard`,
+  });
 
   const [request] = apiCalls();
   assert.equal(request.path, "/api/v1/cases");
-  assert.match(request.headers["idempotency-key"], /^[0-9a-f-]{36}$/);
+  assert.equal(request.headers["idempotency-key"], CASE.idempotency_key);
   const form = request.body;
   assert.equal(form.get("financial_demand_usd"), "3500.00");
   assert.equal(form.get("claimant_affirmation"), "true");
@@ -261,22 +367,123 @@ test("file_case sends a multipart filing with the contract and an idempotency ke
   assert.match(await contract.text(), /Section 12/);
 });
 
+test("file_case sends pasted evidence as a .txt file next to evidence files", async () => {
+  const photo = tempFile("photo.png", "\x89PNG\r\n\x1a\nfake");
+  await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", {
+    ...CASE,
+    evidence: [{ path: photo }],
+    evidence_text: "From: Jordan\nThe deposit is gone.",
+  });
+  const evidence = apiCalls()[0].body.getAll("evidence");
+  assert.deepEqual(evidence.map((file) => file.name), ["photo.png", "evidence_2.txt"]);
+  assert.match(await evidence[1].text(), /The deposit is gone/);
+});
+
 test("file_case reads a contract from a local path", async () => {
-  const path = join(mkdtempSync(join(tmpdir(), "dl-")), "Lease.pdf");
-  writeFileSync(path, "%PDF-1.4 fake");
-  await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", { ...CASE, contract_file: { path } });
+  const path = tempFile("Lease.pdf", "%PDF-1.4 fake");
+  const { contract_text, ...rest } = CASE;
+  await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", { ...rest, contract_file: { path } });
   const contract = apiCalls()[0].body.get("contract_file");
   assert.equal(contract.name, "Lease.pdf");
   assert.equal(contract.type, "application/pdf");
 });
 
+test("a file without an extension is typed from mime_type, then its leading bytes", async () => {
+  const { contract_text, ...rest } = CASE;
+  const sniffed = tempFile("lease", "%PDF-1.4 fake");
+  await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", { ...rest, contract_file: { path: sniffed } });
+  assert.equal(apiCalls()[0].body.get("contract_file").name, "lease.pdf");
+
+  requests = [];
+  const declared = tempFile("upload", "{\\rtf1 fake");
+  await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", {
+    ...rest,
+    contract_file: { path: declared, file_id: "file-abc", file_name: "Lease 2026", mime_type: "text/plain; charset=utf-8" },
+  });
+  const contract = apiCalls()[0].body.get("contract_file");
+  assert.equal(contract.name, "Lease 2026.txt");
+  assert.equal(contract.type, "text/plain");
+});
+
+test("a file name passed as file_id names the file; a ChatGPT file ID does not", async () => {
+  const { contract_text, ...rest } = CASE;
+  const opaque = tempFile("123", "Plain text with no telling bytes");
+  await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", { ...rest, contract_file: { path: opaque, file_id: "contract.txt" } });
+  assert.equal(apiCalls()[0].body.get("contract_file").name, "contract.txt");
+
+  requests = [];
+  const sniffed = tempFile("lease", "%PDF-1.4 fake");
+  await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", { ...rest, contract_file: { path: sniffed, file_id: "file-abc123" } });
+  assert.equal(apiCalls()[0].body.get("contract_file").name, "lease.pdf");
+});
+
 test("file_case rejects unsupported file types before calling the API", async () => {
-  const path = join(mkdtempSync(join(tmpdir(), "dl-")), "lease.exe");
-  writeFileSync(path, "x");
-  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", { ...CASE, contract_file: { path } });
+  const path = tempFile("lease.exe", "x");
+  const { contract_text, ...rest } = CASE;
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", { ...rest, contract_file: { path } });
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /not an accepted file type/);
   assert.equal(apiCalls().length, 0);
+});
+
+test("file_case needs exactly one of contract_file and contract_text", async () => {
+  const path = tempFile("Lease.pdf", "%PDF-1.4 fake");
+  const { contract_text, ...rest } = CASE;
+  for (const args of [rest, { ...CASE, contract_file: { path } }]) {
+    const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", args);
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /exactly one of contract_file or contract_text/);
+  }
+  assert.equal(apiCalls().length, 0);
+});
+
+test("download_url must be https and reach a public address", async () => {
+  const { contract_text, ...rest } = CASE;
+  const cases = [
+    [`${baseUrl}/lease.pdf`, /must use https/],
+    ["https://127.0.0.1/lease.pdf", /not a public address/],
+    ["https://localhost/lease.pdf", /not a public address/],
+    ["https://[::1]/lease.pdf", /not a public address/],
+  ];
+  for (const [download_url, error] of cases) {
+    const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", {
+      ...rest,
+      contract_file: { download_url, file_id: "lease.pdf" },
+    });
+    assert.equal(result.isError, true, download_url);
+    assert.match(result.content[0].text, error, download_url);
+  }
+  assert.equal(apiCalls().length, 0);
+});
+
+test("one call accepts at most 10 files", async () => {
+  const path = tempFile("receipt.txt", "Receipt");
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", {
+    ...CASE,
+    evidence: Array.from({ length: 10 }, () => ({ path })),
+  });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /Too many files: 11 were provided/);
+  assert.equal(apiCalls().length, 0);
+});
+
+test("the write tools refuse a call without an idempotency_key", async () => {
+  const { idempotency_key, ...rest } = CASE;
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", rest);
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /idempotency_key/);
+  assert.equal(apiCalls().length, 0);
+});
+
+test("a refused idempotency key says what the retry means", async () => {
+  const reused = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", { ...CASE, respondent_email: "reused@example.com" });
+  assert.equal(reused.isError, true);
+  assert.match(reused.content[0].text, /first attempt may have gone through/);
+  assert.match(reused.content[0].text, /dashboard at http:\/\/127\.0\.0\.1:\d+\/dashboard/);
+
+  const running = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", { ...CASE, respondent_email: "running@example.com" });
+  assert.equal(running.isError, true);
+  assert.match(running.content[0].text, /still running\. Wait a minute/);
 });
 
 test("file_case refuses to file without the user's affirmation", async () => {
@@ -305,43 +512,85 @@ test("API validation errors are passed through with their details", async () => 
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /DecisionLayer error 422/);
   assert.match(result.content[0].text, /respondent_email/);
-  assert.match(result.content[0].text, /Request ID: req_abc/);
+  assert.match(result.content[0].text, /Reference: req_abc/);
 });
 
-test("file_consent_case creates a consent case and returns the sign link", async () => {
+test("an API server error says to try again later", async () => {
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_case", { ...CASE, respondent_email: "boom@example.com" });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /DecisionLayer error 500/);
+  assert.match(result.content[0].text, /Try again in a few minutes/);
+});
+
+const CONSENT = {
+  question_for_arbitration: "Who owes whom for the shared fence?",
+  financial_demand_usd: "1200.50",
+  respondent_first_name: "Jordan",
+  respondent_last_name: "Chen",
+  respondent_email: "jordan@example.com",
+  idempotency_key: "consent-key-1",
+};
+
+test("file_consent_case creates a consent case and returns the sign link as action_url", async () => {
+  const invoice = tempFile("Invoice.pdf", "%PDF-1.4 invoice");
   const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "file_consent_case", {
-    question_for_arbitration: "Who owes whom for the shared fence?",
-    financial_demand_usd: "1200.50",
-    respondent_first_name: "Jordan",
-    respondent_last_name: "Chen",
-    respondent_email: "jordan@example.com",
-    supporting_documents: [{ text: "Invoice #1" }, { text: "Invoice #2" }],
+    ...CONSENT,
+    contract_text: "We agree to split the fence.",
+    supporting_documents: [{ path: invoice }],
+    supporting_text: "Invoice #2",
   });
   assert.equal(result.isError, undefined);
-  assert.match(result.content[0].text, /creq_01abc\/sign/);
+  assert.match(result.content[0].text, /sign and pay at .*creq_01abc\/sign/);
+  assert.deepEqual(result.structuredContent, {
+    id: "creq_01abc",
+    status: "ready_to_sign",
+    action_url: `${baseUrl}/consent/creq_01abc/sign`,
+    dashboard_url: `${baseUrl}/dashboard`,
+  });
   const [request] = apiCalls();
   assert.equal(request.path, "/api/v1/consent-cases");
+  assert.equal(request.headers["idempotency-key"], "consent-key-1");
   assert.match(request.headers["content-type"], /^multipart\/form-data/);
   assert.equal(request.body.get("financial_demand_usd"), "1200.50");
+  assert.deepEqual(request.body.getAll("contract_files").map((file) => file.name), ["contract_files.txt"]);
   assert.deepEqual(
     request.body.getAll("supporting_documents").map((file) => file.name),
-    ["supporting_documents_1.txt", "supporting_documents_2.txt"],
+    ["Invoice.pdf", "supporting_documents_2.txt"],
   );
+});
+
+test("file_consent_case with a test key points at the dashboard", async () => {
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_test_abc" }, "file_consent_case", CONSENT);
+  assert.equal(result.isError, undefined);
+  assert.match(result.content[0].text, /^Test consent case creq_01abc created \(paid\)/);
+  assert.equal(result.structuredContent.action_url, `${baseUrl}/dashboard`);
 });
 
 test("get_case routes creq_ IDs to the consent endpoint", async () => {
   const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "get_case", { case_id: "creq_01abc" });
   assert.match(result.content[0].text, /ready_to_sign.*sign_terms/);
   assert.match(result.content[0].text, /Case page: .*\/consent\/creq_01abc/);
+  assert.equal(result.structuredContent.respondent_name, "Acme");
+  assert.equal(result.structuredContent.financial_demand_usd, "0.00");
 });
 
 test("get_case says whose turn it is on a case awaiting a response", async () => {
   const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "get_case", { case_id: "case_01abc" });
   assert.equal(result.isError, undefined);
   assert.match(result.content[0].text, /case_01abc is awaiting_response and the user is the claimant/);
-  assert.match(result.content[0].text, /respondent's turn \(round 1\)/);
+  assert.match(result.content[0].text, /respondent's turn to respond \(round 1\)/);
   assert.match(result.content[0].text, /Nothing is required from the user/);
-  assert.equal(result.structuredContent.current_turn, "respondent");
+  assert.deepEqual(result.structuredContent, {
+    id: "case_01abc",
+    status: "awaiting_response",
+    role: "claimant",
+    current_turn: "respondent",
+    action_required: false,
+    view_url: `${baseUrl}/cases/case_01abc`,
+    question_for_arbitration: "Must the deposit be returned?",
+    financial_demand_usd: "3500.00",
+    respondent_name: "Jordan Chen",
+  });
 });
 
 test("get_case explains the API's reason for a 404", async () => {
@@ -355,14 +604,7 @@ test("get_case explains the API's reason for a 404", async () => {
 });
 
 test("run_simulation with a test key is stopped with guidance", async () => {
-  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_test_abc" }, "run_simulation", {
-    question_for_arbitration: "Q",
-    plaintiff_name: "Sam Rivera",
-    respondent_name: "Jordan Chen",
-    plaintiff_argument: "A",
-    respondent_argument: "B",
-    governing_contract: "Contract text",
-  });
+  const result = await call({ DECISIONLAYER_API_KEY: "dvarb_test_abc" }, "run_simulation", SIMULATION);
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /need a live API key/);
   assert.equal(apiCalls().length, 0);
@@ -370,61 +612,51 @@ test("run_simulation with a test key is stopped with guidance", async () => {
 
 test("run_simulation then get_simulation returns the award", async () => {
   const client = await connect({ DECISIONLAYER_API_KEY: "dvarb_live" });
-  const started = await client.callTool({
-    name: "run_simulation",
-    arguments: {
-      question_for_arbitration: "Q",
-      plaintiff_name: "Sam Rivera",
-      respondent_name: "Jordan Chen",
-      plaintiff_argument: "A",
-      respondent_argument: "B",
-      governing_contract: "Contract text",
-    },
+  const started = await client.callTool({ name: "run_simulation", arguments: SIMULATION });
+  assert.deepEqual(started.structuredContent, {
+    id: "case_sim1",
+    status: "processing",
+    page_url: `${baseUrl}/simulation/h/case_sim1`,
   });
-  assert.equal(started.structuredContent.id, "case_sim1");
-  const form = apiCalls()[0].body;
-  assert.equal(form.get("governing_contract"), "Contract text");
+  const [request] = apiCalls();
+  assert.equal(request.headers["idempotency-key"], "sim-key-1");
+  assert.equal(request.body.get("governing_contract"), "Contract text");
 
   const award = await client.callTool({ name: "get_simulation", arguments: { simulation_id: "case_sim1", wait_seconds: 10 } });
   await client.close();
   assert.equal(award.structuredContent.status, "ready");
   assert.match(award.structuredContent.text, /claimant prevails/);
-  assert.match(award.content[0].text, /Award PDF \(public for 30 days\): .*\/d\/xyz\//);
+  assert.match(award.content[0].text, /Award PDF: .*\/d\/xyz\//);
+  assert.equal(award.structuredContent.pdf_url, `${baseUrl}/d/xyz/`);
 });
 
 test("run_simulation sends the respondent's email and rebuttal evidence", async () => {
+  const file = (name) => ({ path: tempFile(name, `${name} contents`) });
   const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "run_simulation", {
-    question_for_arbitration: "Q",
-    plaintiff_name: "Sam Rivera",
-    respondent_name: "Jordan Chen",
+    ...SIMULATION,
     respondent_email: "jordan@example.com",
-    plaintiff_argument: "A",
-    respondent_argument: "B",
     plaintiff_rebuttal: "A2",
     respondent_rebuttal: "B2",
-    governing_contract: "Contract text",
-    plaintiff_documents: [{ text: "Receipt" }],
-    plaintiff_rebuttal_documents: [{ text: "Photo log" }],
-    respondent_rebuttal_documents: [{ text: "Invoice" }, { text: "Email" }],
+    plaintiff_documents: [file("receipt.txt")],
+    plaintiff_rebuttal_documents: [file("photo-log.txt")],
+    respondent_rebuttal_documents: [file("invoice.txt"), file("email.txt")],
   });
   assert.equal(result.isError, undefined);
   const form = apiCalls()[0].body;
   assert.equal(form.get("respondent_email"), "jordan@example.com");
   assert.equal(form.get("plaintiff_rebuttal"), "A2");
-  assert.deepEqual(form.getAll("plaintiff_documents").map((file) => file.name), ["plaintiff_documents.txt"]);
-  assert.deepEqual(form.getAll("plaintiff_rebuttal_documents").map((file) => file.name), ["plaintiff_rebuttal_documents.txt"]);
-  assert.deepEqual(
-    form.getAll("respondent_rebuttal_documents").map((file) => file.name),
-    ["respondent_rebuttal_documents_1.txt", "respondent_rebuttal_documents_2.txt"],
-  );
+  assert.deepEqual(form.getAll("plaintiff_documents").map((file) => file.name), ["receipt.txt"]);
+  assert.deepEqual(form.getAll("plaintiff_rebuttal_documents").map((file) => file.name), ["photo-log.txt"]);
+  assert.deepEqual(form.getAll("respondent_rebuttal_documents").map((file) => file.name), ["invoice.txt", "email.txt"]);
 });
 
 test("get_simulation still returns the award text after the public PDF expires", async () => {
   const result = await call({ DECISIONLAYER_API_KEY: "dvarb_live" }, "get_simulation", { simulation_id: "case_sim2", wait_seconds: 0 });
   assert.equal(result.isError, undefined);
-  assert.match(result.content[0].text, /public PDF link has expired/);
+  assert.match(result.content[0].text, /public award PDF has expired/);
+  assert.match(result.content[0].text, /simulation page is at .*\/simulation\/h\/case_sim2 \(sign-in required\)/);
   assert.match(result.structuredContent.text, /respondent prevails/);
-  assert.equal(result.structuredContent.pdf_url, null);
+  assert.equal("pdf_url" in result.structuredContent, false);
 });
 
 test("send_feedback posts a note that names the plugin", async () => {
@@ -434,7 +666,8 @@ test("send_feedback posts a note that names the plugin", async () => {
     case_id: "CASE_01ABC",
   });
   assert.equal(result.isError, undefined);
-  assert.match(result.content[0].text, /^Feedback fb_01abc was sent/);
+  assert.match(result.content[0].text, /^Feedback fb_01abc recorded/);
+  assert.deepEqual(result.structuredContent, { id: "fb_01abc" });
   const [request] = apiCalls();
   assert.equal(request.path, "/api/v1/feedback");
   assert.match(request.headers["content-type"], /^application\/json/);
