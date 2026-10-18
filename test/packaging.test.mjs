@@ -45,6 +45,9 @@ test("the plugin manifests stay in sync", () => {
   }
   assert.equal(portable.version, pkg.version);
   assert.deepEqual(legacy.interface, portable.extensions["com.openai"].interface);
+  for (const block of ["review", "publication"]) {
+    assert.deepEqual(legacy.extensions["com.openai"][block], portable.extensions["com.openai"][block], block);
+  }
 });
 
 test("every client configuration points at the same hosted server", () => {
@@ -192,4 +195,31 @@ test("the plugin folder holds only the remote server reference and small files",
     assert.ok(server.url && !server.command, `${name} is a remote server`);
   }
   assert.ok(existsSync(join(ROOT, "local/server.mjs")), "the local server is built outside the plugin");
+});
+
+test("the OpenAI review block carries the cases and notes the directory asks for", () => {
+  // Initial review needs exactly five positive and three negative cases, a demo
+  // recording and release notes; tools_triggered is a comma-separated string.
+  const tools = new Set(
+    ["get_account", "get_profile", "file_case", "file_consent_case", "get_case", "run_simulation", "get_simulation", "send_feedback"],
+  );
+  const openai = readJson("plugins/decisionlayer/plugin.json").extensions["com.openai"];
+  const { positive, negative } = openai.review.test_cases;
+  assert.equal(positive.length, 5);
+  assert.equal(negative.length, 3);
+  for (const testCase of positive) {
+    for (const field of ["description", "prompt", "tools_triggered", "expected_behavior"]) {
+      assert.ok(typeof testCase[field] === "string" && testCase[field].length > 0, field);
+    }
+    assert.ok(testCase.description.length <= 4000);
+    for (const tool of testCase.tools_triggered.split(",").map((name) => name.trim())) {
+      assert.ok(tools.has(tool), `${tool} is a hosted tool`);
+    }
+  }
+  for (const testCase of negative) {
+    assert.ok(testCase.description.length > 0 && testCase.prompt.length > 0);
+    assert.deepEqual(Object.keys(testCase).sort(), ["description", "prompt"]);
+  }
+  assert.match(openai.review.demo_recording_url, /^https:\/\//);
+  assert.ok(openai.publication.release_notes.length > 0);
 });

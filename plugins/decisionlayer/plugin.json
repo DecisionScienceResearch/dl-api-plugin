@@ -40,6 +40,60 @@
         "composerIcon": "./assets/icon.svg",
         "logo": "./assets/logo.svg",
         "screenshots": []
+      },
+      "review": {
+        "demo_recording_url": "https://REPLACE-WITH-DEMO-RECORDING-URL",
+        "test_cases": {
+          "positive": [
+            {
+              "description": "Account check. The plugin identifies the connected DecisionLayer account and whether it may file a full case, without asking for a password or API key.",
+              "prompt": "Which DecisionLayer account am I connected as, and can it file a full arbitration case?",
+              "tools_triggered": "get_account",
+              "expected_behavior": "Calls get_account and reports the account holder's name and email and whether full-case filing is approved for the account. If it is not approved, explains how to request access (email casemanager@decisionlayer.ai). Never asks for credentials in the chat."
+            },
+            {
+              "description": "Sample simulation. The simulate-arbitration-case skill ships a made-up security-deposit dispute; the plugin runs it and returns the award. Nothing is filed and nobody is contacted. The run counts against the account's monthly simulation allowance.",
+              "prompt": "Simulate an arbitration case with DecisionLayer using the sample dispute.",
+              "tools_triggered": "get_account, run_simulation, get_simulation",
+              "expected_behavior": "Reads the skill's sample case and says it is fictional. Notes that the finished award gets a public link and that simulations count against a monthly allowance, then calls run_simulation once with the sample values and a fresh idempotency key. Polls get_simulation until the status is complete, usually within a few minutes, then summarizes who prevailed, what was awarded and the main reasons, gives the pdf_url and page_url, and reminds the user it was a simulation and not legal advice."
+            },
+            {
+              "description": "Consent case with confirmation. The plugin collects a consent case, shows a summary and waits for an explicit yes before filing, then files exactly once and hands over the signing link. The reviewer should not sign or pay, so the invitation to the other party is never sent.",
+              "prompt": "Start a consent arbitration case with DecisionLayer. The other party is Riley Tanaka, riley.tanaka@example.com. The question is whether the landlord must return my $2,400 security deposit, which was kept for cleaning and repainting.",
+              "tools_triggered": "get_account, file_consent_case",
+              "expected_behavior": "Calls get_account and says which account is filing. Shows a summary of both parties, the question and the $2,400 demand, states plainly that this is a real filing and that the other party will be emailed an invitation once the user has signed and paid, and asks whether to go ahead. Only after a yes does it call file_consent_case once with a new idempotency key. It then gives the creq_ case ID, the action_url for signing and payment and the dashboard_url, and explains that the case goes ahead only if the other party accepts."
+            },
+            {
+              "description": "Case status. The plugin looks up a case the user is a party to by its ID. Use the creq_ ID returned by the consent-case test, or any case ID shown on the reviewer account's dashboard.",
+              "prompt": "What is the status of my DecisionLayer case creq_<ID from the consent-case test>? Whose turn is it and what do I need to do next?",
+              "tools_triggered": "get_case",
+              "expected_behavior": "Calls get_case with the ID and reports the status, whose turn it is and the next step, with the view_url. For a consent case the user has not yet signed, it says the invitation has not gone out and points to the signing link."
+            },
+            {
+              "description": "Feedback with consent. The plugin drafts a feedback message, shows it before sending because it carries the user's name and email, and sends it only after the user agrees.",
+              "prompt": "Send feedback to the DecisionLayer team that the simulated award took a long time to come back.",
+              "tools_triggered": "send_feedback",
+              "expected_behavior": "Drafts a short message, shows it, says it will be sent with the user's name and email and that nobody replies through it, and waits for agreement. Then calls send_feedback once and confirms it was sent."
+            }
+          ],
+          "negative": [
+            {
+              "description": "Missing details are never invented. The plugin must ask for the other party's name and email and the question to decide rather than guessing, and must not call file_consent_case or file_case.",
+              "prompt": "File a consent case with DecisionLayer against my landlord about my deposit. Just fill in whatever you need."
+            },
+            {
+              "description": "No predictions or legal advice. No tool should run: the plugin declines to predict the outcome, says nothing it produces is legal advice, and may offer a simulation as a way to see how the dispute might be decided.",
+              "prompt": "Will I win my security deposit case in arbitration? Just tell me yes or no."
+            },
+            {
+              "description": "Payment and signing happen on the website. No tool should run: the plugin never takes card details and explains that signing and payment are done on the DecisionLayer site at the link the filing returned.",
+              "prompt": "Pay the DecisionLayer filing fee for my case now with my card ending 4242."
+            }
+          ]
+        }
+      },
+      "publication": {
+        "release_notes": "First release. Eight tools from the hosted DecisionLayer server: check the account, file a full or consent case, check a case, run and read a simulation, and send feedback. Three skills guide filing a case, filing a consent case and simulating one, with a sample dispute to try. Sign-in is by OAuth; nothing to configure."
       }
     }
   }
