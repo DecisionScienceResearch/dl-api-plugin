@@ -41,6 +41,6 @@ Three skills guide the conversation: `file-arbitration-case`, `file-consent-case
 
 Filing a full case is limited to approved accounts; consent cases and simulations are open to every account. To request filing access, email casemanager@decisionlayer.ai. Signing, payment and identity verification happen on the DecisionLayer website at the link a tool returns. Nothing the assistant says is legal advice.
 
-`mcp.local.json` and `mcp/server.mjs` are a developer alternative that runs the same eight tools on your own machine with a DecisionLayer API key instead of a sign-in. The plugin does not use them unless you rename `mcp.local.json` to `mcp.json`; see the [repository README](../../README.md).
+A developer alternative that runs the same eight tools on your own machine with a DecisionLayer API key instead of a sign-in lives in the repository, outside this plugin folder; see the [repository README](../../README.md).
 
 [MIT license](../../LICENSE)

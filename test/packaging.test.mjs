@@ -2,7 +2,7 @@
 // marketplace manifests, the skills, the client configurations and the links
 // in the docs. None of them starts the server.
 import assert from "node:assert/strict";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -70,7 +70,6 @@ test("both marketplaces list the plugin under its manifest's name", () => {
 test("every path a manifest names exists", () => {
   const codex = readJson("plugins/decisionlayer/.codex-plugin/plugin.json");
   const portable = readJson("plugins/decisionlayer/plugin.json").extensions["com.openai"].interface;
-  const local = readJson("plugins/decisionlayer/mcp.local.json").mcpServers.decisionlayer;
   const paths = [
     codex.skills,
     codex.mcpServers,
@@ -79,7 +78,6 @@ test("every path a manifest names exists", () => {
     ...codex.interface.screenshots,
     portable.composerIcon,
     portable.logo,
-    ...local.args,
   ];
   for (const path of paths) assert.ok(existsSync(join(PLUGIN, path)), path);
 });
@@ -125,11 +123,10 @@ test("relative links in the docs point at files that exist", () => {
 // an `extensions` object on each server for the authentication declaration.
 const SERVER_FIELDS = {
   "streamable-http": ["type", "url", "headers", "extensions"],
-  stdio: ["type", "command", "args", "env", "cwd"],
 };
 
-test("the Codex server configurations follow the agent-plugins schema", () => {
-  for (const path of ["plugins/decisionlayer/mcp.json", "plugins/decisionlayer/mcp.local.json"]) {
+test("the Codex server configuration follows the agent-plugins schema", () => {
+  for (const path of ["plugins/decisionlayer/mcp.json"]) {
     const config = readJson(path);
     assert.deepEqual(Object.keys(config).sort(), ["$schema", "mcpServers"], path);
     assert.equal(config.$schema, "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json", path);
@@ -182,4 +179,17 @@ test("the plugin folder has no system files", () => {
   for (const path of repoFiles(PLUGIN)) {
     for (const part of path.split("/")) assert.ok(!banned.has(part), path);
   }
+});
+
+test("the plugin folder holds only the remote server reference and small files", () => {
+  // The Claude directory holds any non-image file over 256 KiB for a reviewer,
+  // so the bundled local server lives outside the plugin folder.
+  for (const path of repoFiles(PLUGIN)) {
+    const size = statSync(join(ROOT, path)).size;
+    assert.ok(size <= 256 * 1024, `${path} is ${size} bytes`);
+  }
+  for (const [name, server] of Object.entries(readJson("plugins/decisionlayer/.mcp.json").mcpServers)) {
+    assert.ok(server.url && !server.command, `${name} is a remote server`);
+  }
+  assert.ok(existsSync(join(ROOT, "local/server.mjs")), "the local server is built outside the plugin");
 });

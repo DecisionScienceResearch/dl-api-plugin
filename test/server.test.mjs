@@ -10,7 +10,7 @@ import { after, before, beforeEach, test } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
-const SERVER = new URL("../plugins/decisionlayer/mcp/server.mjs", import.meta.url).pathname;
+const SERVER = new URL("../local/server.mjs", import.meta.url).pathname;
 const ACCOUNT = {
   id: "user_123",
   email: "sam@example.com",

@@ -12,8 +12,8 @@
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && node --test test/*.test.mjs",
-    "start": "node plugins/decisionlayer/mcp/server.mjs",
-    "inspect": "npx @modelcontextprotocol/inspector node plugins/decisionlayer/mcp/server.mjs"
+    "start": "node local/server.mjs",
+    "inspect": "npx @modelcontextprotocol/inspector node local/server.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.0",
