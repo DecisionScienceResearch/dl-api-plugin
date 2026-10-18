@@ -1,6 +1,6 @@
 {
   "name": "decisionlayer",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "Bring a case to arbitration with DecisionLayer: file a full case or a consent case, or simulate one first.",
   "author": {
     "name": "DecisionLayer",
@@ -28,6 +28,7 @@
       "Write"
     ],
     "websiteURL": "https://www.decisionlayer.ai",
+    "supportURL": "https://www.decisionlayer.ai/contact",
     "privacyPolicyURL": "https://www.decisionlayer.ai/privacy",
     "termsOfServiceURL": "https://www.decisionlayer.ai/terms",
     "defaultPrompt": [

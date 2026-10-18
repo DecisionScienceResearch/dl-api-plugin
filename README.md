@@ -145,6 +145,7 @@ npm run inspect   # opens the MCP Inspector against the local server
 .agents/plugins/marketplace.json   marketplace entry for Codex and ChatGPT
 .claude-plugin/marketplace.json    marketplace entry for Claude Code
 plugins/decisionlayer/
+  README.md                        what the plugin does, shown as its listing in the directories
   plugin.json                      plugin manifest
   .codex-plugin/plugin.json        the same manifest in the older layout
   .claude-plugin/plugin.json       the same manifest for Claude Code

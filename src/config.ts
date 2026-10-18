@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 export const PLUGIN_NAME = "decisionlayer-chatgpt-plugin";
-export const PLUGIN_VERSION = "0.2.0";
+export const PLUGIN_VERSION = "1.0.0";
 
 export const DEFAULT_BASE_URL = "https://www.decisionlayer.ai";
 export const KEY_FILE = join(homedir(), ".config", "decisionlayer", "api_key");

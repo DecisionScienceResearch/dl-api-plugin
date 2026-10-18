@@ -1,6 +1,6 @@
 {
   "name": "decisionlayer",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "Bring a case to arbitration with DecisionLayer: file a full case or a consent case, or simulate one first.",
   "author": {
     "name": "DecisionLayer",
@@ -9,5 +9,10 @@
   "homepage": "https://www.decisionlayer.ai/api",
   "repository": "https://github.com/DecisionScienceResearch/dl-api-plugin",
   "license": "MIT",
-  "keywords": ["arbitration", "dispute-resolution", "legal", "decisionlayer"]
+  "keywords": [
+    "arbitration",
+    "dispute-resolution",
+    "legal",
+    "decisionlayer"
+  ]
 }

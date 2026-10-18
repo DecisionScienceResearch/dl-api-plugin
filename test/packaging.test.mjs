@@ -119,3 +119,67 @@ test("relative links in the docs point at files that exist", () => {
     }
   }
 });
+
+// The Codex and ChatGPT side reads mcp.json through the agent-plugins schema,
+// which is closed: a server entry may carry only the fields below. OpenAI adds
+// an `extensions` object on each server for the authentication declaration.
+const SERVER_FIELDS = {
+  "streamable-http": ["type", "url", "headers", "extensions"],
+  stdio: ["type", "command", "args", "env", "cwd"],
+};
+
+test("the Codex server configurations follow the agent-plugins schema", () => {
+  for (const path of ["plugins/decisionlayer/mcp.json", "plugins/decisionlayer/mcp.local.json"]) {
+    const config = readJson(path);
+    assert.deepEqual(Object.keys(config).sort(), ["$schema", "mcpServers"], path);
+    assert.equal(config.$schema, "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json", path);
+    for (const [name, server] of Object.entries(config.mcpServers)) {
+      const allowed = SERVER_FIELDS[server.type];
+      assert.ok(allowed, `${path}: ${name} uses a known transport type, not ${JSON.stringify(server.type)}`);
+      for (const field of Object.keys(server)) assert.ok(allowed.includes(field), `${path}: ${name}.${field}`);
+    }
+  }
+});
+
+test("the hosted server is declared to OpenAI as OAuth with dynamic client registration", () => {
+  const server = readJson("plugins/decisionlayer/mcp.json").mcpServers.decisionlayer;
+  assert.equal(server.type, "streamable-http");
+  assert.ok(!("headers" in server), "no headers: the public directory rejects them");
+  const auth = server.extensions["com.openai"].auth;
+  assert.equal(auth.type, "oauth");
+  assert.equal(auth.client.mode, "dcr");
+  assert.ok(!("clientId" in auth.client) && !("clientSecret" in auth.client), "no client credentials in the package");
+});
+
+test("the listing carries the four HTTPS URLs and the copy limits the public directories require", () => {
+  const ui = readJson("plugins/decisionlayer/plugin.json").extensions["com.openai"].interface;
+  for (const field of ["websiteURL", "supportURL", "privacyPolicyURL", "termsOfServiceURL"]) {
+    assert.match(ui[field] ?? "", /^https:\/\/[^@\s]+$/, field);
+  }
+  assert.ok(ui.displayName.length <= 30, "displayName is at most 30 characters");
+  assert.ok(ui.shortDescription.length <= 30, "shortDescription is at most 30 characters");
+  assert.ok(ui.longDescription.length <= 4000, "longDescription is at most 4000 characters");
+  assert.ok(ui.developerName.length <= 80, "developerName is at most 80 characters");
+});
+
+test("the icon and logo are square and at least 48 pixels", () => {
+  for (const asset of ["assets/icon.svg", "assets/logo.svg"]) {
+    const svg = readFileSync(join(PLUGIN, asset), "utf8");
+    const width = Number(/<svg[^>]*\swidth="(\d+)"/.exec(svg)?.[1]);
+    const height = Number(/<svg[^>]*\sheight="(\d+)"/.exec(svg)?.[1]);
+    assert.ok(width >= 48 && width === height, `${asset} is ${width}x${height}`);
+  }
+});
+
+test("the plugin folder has the README the Claude directory shows as its listing", () => {
+  const text = readFileSync(join(PLUGIN, "README.md"), "utf8");
+  const words = text.replace(/```[\s\S]*?```/g, "").split(/\s+/).filter(Boolean);
+  assert.ok(words.length >= 40, `the README has ${words.length} words outside code blocks; the directory needs 40`);
+});
+
+test("the plugin folder has no system files", () => {
+  const banned = new Set([".DS_Store", "Thumbs.db", "desktop.ini", "__MACOSX"]);
+  for (const path of repoFiles(PLUGIN)) {
+    for (const part of path.split("/")) assert.ok(!banned.has(part), path);
+  }
+});
