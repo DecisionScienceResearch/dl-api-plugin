@@ -1,11 +1,13 @@
-// Bundles the MCP server into a single dependency-free file. The bundle is
-// committed so the plugin works straight from a git install, with no
-// `npm install` step on the user's machine.
+// Bundles the local MCP server into a single dependency-free file. The bundle
+// is committed so the local mode runs straight from a clone, with no
+// `npm install` step. It lives outside plugins/decisionlayer/ so that people
+// who install the plugin never download it and the plugin directories never
+// have to review it.
 import { build } from "esbuild";
 
 await build({
   entryPoints: ["src/server.ts"],
-  outfile: "plugins/decisionlayer/mcp/server.mjs",
+  outfile: "local/server.mjs",
   bundle: true,
   platform: "node",
   target: "node20",

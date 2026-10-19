@@ -28513,7 +28513,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 var PLUGIN_NAME = "decisionlayer-chatgpt-plugin";
-var PLUGIN_VERSION = "0.2.0";
+var PLUGIN_VERSION = "1.0.0";
 var DEFAULT_BASE_URL = "https://www.decisionlayer.ai";
 var KEY_FILE = join(homedir(), ".config", "decisionlayer", "api_key");
 var KEYS_PAGE_PATH = "/settings/api-keys";

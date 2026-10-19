@@ -1,7 +1,7 @@
 {
   "name": "decisionlayer-plugin",
-  "version": "0.2.0",
-  "description": "ChatGPT / Codex plugin for bringing a case to arbitration with the DecisionLayer API.",
+  "version": "1.0.0",
+  "description": "Plugin for ChatGPT, Codex and Claude Code that brings a case to arbitration with the DecisionLayer API.",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -12,8 +12,8 @@
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && node --test test/*.test.mjs",
-    "start": "node plugins/decisionlayer/mcp/server.mjs",
-    "inspect": "npx @modelcontextprotocol/inspector node plugins/decisionlayer/mcp/server.mjs"
+    "start": "node local/server.mjs",
+    "inspect": "npx @modelcontextprotocol/inspector node local/server.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.0",

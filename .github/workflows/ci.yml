@@ -52,9 +52,9 @@ jobs:
       - name: Committed bundle matches src/
         run: |
           npm run build
-          if ! git diff --quiet -- plugins/decisionlayer/mcp/server.mjs; then
-            echo "::error file=plugins/decisionlayer/mcp/server.mjs::The bundle is out of date. Run 'npm run build' and commit plugins/decisionlayer/mcp/server.mjs."
-            git diff --stat -- plugins/decisionlayer/mcp/server.mjs
+          if ! git diff --quiet -- local/server.mjs; then
+            echo "::error file=local/server.mjs::The bundle is out of date. Run 'npm run build' and commit local/server.mjs."
+            git diff --stat -- local/server.mjs
             exit 1
           fi
       - name: Validate the marketplace and plugin with Claude Code
