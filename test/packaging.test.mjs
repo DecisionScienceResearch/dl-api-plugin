@@ -198,11 +198,13 @@ test("the plugin folder holds only the remote server reference and small files",
 });
 
 test("the OpenAI review block carries the cases and notes the directory asks for", () => {
-  // Initial review needs exactly five positive and three negative cases, a demo
+  // Review needs exactly five positive and three negative cases, a demo
   // recording and release notes; tools_triggered is a comma-separated string.
-  const tools = new Set(
-    ["get_account", "get_profile", "file_case", "file_consent_case", "get_case", "run_simulation", "get_simulation", "send_feedback"],
-  );
+  const tools = new Set([
+    "get_account", "get_profile", "file_case", "file_consent_case", "get_case", "run_simulation", "get_simulation", "send_feedback",
+    "list_cases", "get_case_record", "get_case_file", "respond_to_case", "get_case_updates", "get_decision",
+    "claim_consent_case", "answer_consent_case",
+  ]);
   const openai = readJson("plugins/decisionlayer/plugin.json").extensions["com.openai"];
   const { positive, negative } = openai.review.test_cases;
   assert.equal(positive.length, 5);
@@ -216,10 +218,20 @@ test("the OpenAI review block carries the cases and notes the directory asks for
       assert.ok(tools.has(tool), `${tool} is a hosted tool`);
     }
   }
+  // With five cases for sixteen tools, the cases have to chain them. A
+  // reviewer must still see a case found, read, answered, followed and decided.
+  const triggered = new Set(positive.flatMap((testCase) => testCase.tools_triggered.split(",").map((name) => name.trim())));
+  for (const tool of ["list_cases", "get_case_record", "get_case_file", "respond_to_case", "get_case_updates", "get_decision"]) {
+    assert.ok(triggered.has(tool), `a positive case exercises ${tool}`);
+  }
   for (const testCase of negative) {
     assert.ok(testCase.description.length > 0 && testCase.prompt.length > 0);
     assert.deepEqual(Object.keys(testCase).sort(), ["description", "prompt"]);
   }
+  assert.ok(
+    negative.some((testCase) => testCase.description.includes("must not call respond_to_case")),
+    "a negative case covers submitting a response the user has not seen",
+  );
   assert.match(openai.review.demo_recording_url, /^https:\/\//);
   assert.ok(openai.publication.release_notes.length > 0);
 });

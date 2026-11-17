@@ -58,5 +58,5 @@ If a tool fails in a way you cannot fix, offer to report it with `send_feedback`
 
 ## Limits
 
-- This plugin creates the consent case. It does not sign, pay, or accept on the other party's behalf.
+- This skill creates the consent case. It does not sign or pay, and it never answers for the other party: they accept or reject from their own account. A user who was *invited* to a consent case answers with the `respond-to-arbitration-case` skill.
 - Do not give legal advice or predict the outcome.

@@ -5,6 +5,7 @@ Bring a case to arbitration with [DecisionLayer](https://www.decisionlayer.ai) f
 - **File a full case** under a contract that has an arbitration clause.
 - **File a consent case**, where you invite the other party to agree to arbitrate.
 - **Simulate a case** first: give both sides of a dispute and get a written award back in a few minutes, with nothing filed and nobody contacted.
+- **Carry a case through**: see what is waiting on you, read what the other party filed, respond when it is your turn, and read the award, as claimant or respondent.
 
 ## Install
 
@@ -35,12 +36,12 @@ Whatever you give the assistant for a filing or a simulation, such as the contra
 
 ## What is in the plugin
 
-Eight tools from the hosted server: `get_account`, `get_profile`, `file_case`, `file_consent_case`, `get_case`, `run_simulation`, `get_simulation` and `send_feedback`. Filing a case and running a simulation are marked destructive, so the assistant asks you before it runs them, and every filing carries an idempotency key so a retry never files twice.
+Sixteen tools from the hosted server. Eight bring a case: `get_account`, `get_profile`, `file_case`, `file_consent_case`, `get_case`, `run_simulation`, `get_simulation` and `send_feedback`. Eight carry one forward: `list_cases`, `get_case_record`, `get_case_file`, `respond_to_case`, `get_case_updates`, `get_decision`, `claim_consent_case` and `answer_consent_case`. Filing a case, running a simulation, submitting a response and answering a consent invitation are marked destructive, so the assistant asks you before it runs them, and every filing and response carries an idempotency key so a retry never submits twice.
 
-Three skills guide the conversation: `file-arbitration-case`, `file-consent-case` and `simulate-arbitration-case`, which ships with a made-up [sample dispute](skills/simulate-arbitration-case/references/sample-case.md) so you can try it without preparing anything.
+Five skills guide the conversation: `file-arbitration-case`, `file-consent-case`, `respond-to-arbitration-case`, `follow-arbitration-case` and `simulate-arbitration-case`, which ships with a made-up [sample dispute](skills/simulate-arbitration-case/references/sample-case.md) so you can try it without preparing anything.
 
 Filing a full case is limited to approved accounts; consent cases and simulations are open to every account. To request filing access, email casemanager@decisionlayer.ai. Signing, payment and identity verification happen on the DecisionLayer website at the link a tool returns. Nothing the assistant says is legal advice.
 
-A developer alternative that runs the same eight tools on your own machine with a DecisionLayer API key instead of a sign-in lives in the repository, outside this plugin folder; see the [repository README](../../README.md).
+A developer alternative that runs the filing and simulation tools on your own machine with a DecisionLayer API key instead of a sign-in lives in the repository, outside this plugin folder; see the [repository README](../../README.md).
 
 [MIT license](../../LICENSE)

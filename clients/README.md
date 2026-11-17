@@ -55,8 +55,8 @@ To share the configuration in a repository instead, copy
 ```
 
 **Option B: install the plugin.** This repository is also a Claude Code
-plugin marketplace. The plugin adds the same server plus the three skills
-that guide a filing or a simulation:
+plugin marketplace. The plugin adds the same server plus the five skills
+that guide a filing, a response, following a case, or a simulation:
 
 ```bash
 claude plugin marketplace add DecisionScienceResearch/dl-api-plugin
@@ -155,7 +155,7 @@ attached to the session.
 only. For a server-side agent that cannot open a browser, run the bundled
 stdio server in this repository with a DecisionLayer API key instead; see
 *Running the tools locally with an API key* in the [main README](../README.md).
-It offers the same eight tools against the same public API.
+It offers the eight filing and simulation tools against the same public API; the tools that carry a case forward are on the hosted server only.
 
 See the DecisionLayer docs for the full picture of what agents can and
 cannot do through these tools, including how human steps such as signing and

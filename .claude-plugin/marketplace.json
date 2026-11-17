@@ -9,7 +9,7 @@
     {
       "name": "decisionlayer",
       "source": "./plugins/decisionlayer",
-      "description": "Bring a case to arbitration with DecisionLayer: file a full case or a consent case, or simulate one first."
+      "description": "Bring a case to arbitration with DecisionLayer and carry it through: file a full case or a consent case, respond when it is your turn, read the award, or simulate one first."
     }
   ]
 }
