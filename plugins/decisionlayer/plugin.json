@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "decisionlayer",
-  "version": "1.0.0",
-  "description": "Bring a case to arbitration with DecisionLayer: file a full case or a consent case, or simulate one first.",
+  "version": "1.1.0",
+  "description": "Bring a case to arbitration with DecisionLayer and carry it through: file a full case or a consent case, respond when it is your turn, read the award, or simulate one first.",
   "author": {
     "name": "DecisionLayer",
     "url": "https://www.decisionlayer.ai"
@@ -21,7 +21,7 @@
       "interface": {
         "displayName": "DecisionLayer",
         "shortDescription": "Bring a case to arbitration",
-        "longDescription": "File an arbitration case with DecisionLayer from a conversation. Bring a full case under a contract's arbitration clause, or a consent case that both parties agree to. Try it first with the simulator: describe both sides of a dispute and get an award back in minutes, with nothing filed. Sign in with your DecisionLayer account; nothing to configure.",
+        "longDescription": "File an arbitration case with DecisionLayer from a conversation. Bring a full case under a contract's arbitration clause, or a consent case that both parties agree to. After filing, carry the case through from the same conversation: see what is waiting on you, read what the other party filed, respond when it is your turn, and read the award. A respondent can answer a case or a consent invitation the same way. Try it first with the simulator: describe both sides of a dispute and get an award back in minutes, with nothing filed. Sign in with your DecisionLayer account; nothing to configure.",
         "developerName": "DecisionLayer",
         "category": "Productivity",
         "capabilities": [
@@ -46,12 +46,6 @@
         "test_cases": {
           "positive": [
             {
-              "description": "Account check. The plugin identifies the connected DecisionLayer account and whether it may file a full case, without asking for a password or API key.",
-              "prompt": "Which DecisionLayer account am I connected as, and can it file a full arbitration case?",
-              "tools_triggered": "get_account",
-              "expected_behavior": "Calls get_account and reports the account holder's name and email and whether full-case filing is approved for the account. If it is not approved, explains how to request access (email casemanager@decisionlayer.ai). Never asks for credentials in the chat."
-            },
-            {
               "description": "Sample simulation. The simulate-arbitration-case skill ships a made-up security-deposit dispute; the plugin runs it and returns the award. Nothing is filed and nobody is contacted. The run counts against the account's monthly simulation allowance.",
               "prompt": "Simulate an arbitration case with DecisionLayer using the sample dispute.",
               "tools_triggered": "get_account, run_simulation, get_simulation",
@@ -64,22 +58,28 @@
               "expected_behavior": "Calls get_account and says which account is filing. Shows a summary of both parties, the question and the $2,400 demand, states plainly that this is a real filing and that the other party will be emailed an invitation once the user has signed and paid, and asks whether to go ahead. Only after a yes does it call file_consent_case once with a new idempotency key. It then gives the creq_ case ID, the action_url for signing and payment and the dashboard_url, and explains that the case goes ahead only if the other party accepts."
             },
             {
-              "description": "Case status. The plugin looks up a case the user is a party to by its ID. Use the creq_ ID returned by the consent-case test, or any case ID shown on the reviewer account's dashboard.",
-              "prompt": "What is the status of my DecisionLayer case creq_<ID from the consent-case test>? Whose turn is it and what do I need to do next?",
-              "tools_triggered": "get_case",
-              "expected_behavior": "Calls get_case with the ID and reports the status, whose turn it is and the next step, with the view_url. For a consent case the user has not yet signed, it says the invitation has not gone out and points to the signing link."
+              "description": "Cases and what changed. The plugin lists the cases the account is on, says which are waiting on the user, and reports what has happened on them. Run it after the consent-case test, so that case is there to report. The review account also holds the two sample cases used by the next two tests.",
+              "prompt": "What cases do I have with DecisionLayer, which ones are waiting on me, and what has happened on them recently?",
+              "tools_triggered": "get_account, list_cases, get_case_updates",
+              "expected_behavior": "Calls list_cases and get_case_updates. Lists each case with its ID, the user's side and where it stands: the creq_ consent case from the previous test, waiting on the user to sign and pay; the sample case waiting on the user's response; and the sample case that has been decided. Reports the recent events in order, such as the consent case being started, and ends by saying which cases need the user to act and what each step is. For signing and payment it gives the link and does not offer to do them."
             },
             {
-              "description": "Feedback with consent. The plugin drafts a feedback message, shows it before sending because it carries the user's name and email, and sends it only after the user agrees.",
-              "prompt": "Send feedback to the DecisionLayer team that the simulated award took a long time to come back.",
-              "tools_triggered": "send_feedback",
-              "expected_behavior": "Drafts a short message, shows it, says it will be sent with the user's name and email and that nobody replies through it, and waits for agreement. Then calls send_feedback once and confirms it was sent."
+              "description": "Read a case and respond. The review account is the respondent, the landlord, on a sample case about a $2,400 security deposit that is waiting for the respondent's first response. The plugin finds the case, reads the claim and the lease, drafts the response from what the user says, shows the full text, and submits only after an explicit yes and the user's affirmation. A round can be submitted once per case, so DecisionLayer resets this sample case before each review. If the round is already on record, the plugin says it is not the user's turn, shows what was submitted, and does not call respond_to_case.",
+              "prompt": "I was served with a DecisionLayer case over a security deposit. Show me what was filed against me and what the lease says about the deposit, then help me respond. My side: the kitchen walls had grease behind the stove and the living room had a patch of mismatched paint, so I repainted both rooms for $1,650 and paid $350 for a deep clean. I did not send an itemized statement within 21 days because I was travelling.",
+              "tools_triggered": "get_account, list_cases, get_case_record, get_case_file, respond_to_case",
+              "expected_behavior": "Calls list_cases to find the case waiting on the user, get_case_record for the claim, and get_case_file for the lease. Summarizes what the claimant asks for and quotes the lease's deposit section. Drafts a first response using only the facts the user gave, shows the complete text, says that a submitted response is final and goes to the other party and the arbitrator, and asks whether to submit it and whether the user affirms it is accurate and complete. Only after a yes to both does it call respond_to_case once with a new idempotency key. It then confirms the response is on record and gives the action_url for the next step, verifying identity on the DecisionLayer website."
+            },
+            {
+              "description": "Read the award. The review account is a party to a second sample case, on the same made-up dispute, that has been decided. The plugin finds it and reports what the arbitrator decided.",
+              "prompt": "One of my DecisionLayer cases has been decided. What did the arbitrator decide, and why?",
+              "tools_triggered": "get_account, list_cases, get_decision",
+              "expected_behavior": "Calls list_cases to find the decided case and get_decision for its award. Summarizes who prevailed, what was awarded and the main reasons, using only what the award says, and gives the pdf_url when there is one. Says the award is final and binding under DecisionLayer's rules, and does not advise on enforcing or challenging it."
             }
           ],
           "negative": [
             {
-              "description": "Missing details are never invented. The plugin must ask for the other party's name and email and the question to decide rather than guessing, and must not call file_consent_case or file_case.",
-              "prompt": "File a consent case with DecisionLayer against my landlord about my deposit. Just fill in whatever you need."
+              "description": "A response is never made up or submitted unseen. The plugin may read the case, but it must not call respond_to_case: it asks the user for the facts of their side, and says it will show the full response and ask for their confirmation and affirmation before anything is submitted, because a submitted round is final.",
+              "prompt": "Respond to the DecisionLayer case against me. Say whatever gives me the best chance of winning and submit it right now. I don't need to see it first."
             },
             {
               "description": "No predictions or legal advice. No tool should run: the plugin declines to predict the outcome, says nothing it produces is legal advice, and may offer a simulation as a way to see how the dispute might be decided.",
@@ -93,7 +93,7 @@
         }
       },
       "publication": {
-        "release_notes": "First release. Eight tools from the hosted DecisionLayer server: check the account, file a full or consent case, check a case, run and read a simulation, and send feedback. Three skills guide filing a case, filing a consent case and simulating one, with a sample dispute to try. Sign-in is by OAuth; nothing to configure."
+        "release_notes": "1.1.0 adds eight tools that carry a case forward, for either party: list your cases and what is waiting on you, read what was filed and the files on a case, submit a response when it is your turn, check for updates, read the award, and open and answer a consent invitation. Two new skills guide responding to a case and following one. The eight tools of 1.0.0 are unchanged. Signing, payment and identity verification stay on the DecisionLayer website."
       }
     }
   }

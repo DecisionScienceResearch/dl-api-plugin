@@ -5,6 +5,7 @@ Bring a case to arbitration with [DecisionLayer](https://www.decisionlayer.ai) f
 - **File a full case** under a contract that has an arbitration clause.
 - **File a consent case**, where you invite the other party to agree to arbitrate.
 - **Simulate a case** first: give both sides of a dispute and get a written award back in a few minutes, with nothing filed and nobody contacted.
+- **Carry a case through**: see what is waiting on you, read what the other party filed, submit your response when it is your turn, and read the award. This works for the respondent as well as the claimant.
 
 You sign in with your DecisionLayer account. There is nothing to configure and no key to copy.
 
@@ -67,6 +68,26 @@ Filing a full case is limited to approved accounts: `get_account` reports whethe
 
 Signing, payment and identity verification happen on the DecisionLayer website. The plugin gives you the link.
 
+## After a case is filed
+
+The same assistant takes either party through the rest of the case:
+
+> What is waiting on me at DecisionLayer?
+
+> I was served with a DecisionLayer case. Help me respond.
+
+> Has the other side replied on my case? Show me what they filed.
+
+| Step | What the assistant does |
+| --- | --- |
+| Find the case | `list_cases` lists your cases and consent cases and which are waiting on you. A case filed *against* you appears once you have claimed it on the DecisionLayer website with the link or code from your notice. |
+| Read it | `get_case_record` returns the claim and every submitted round. `get_case_file` reads a file: the text of a .pdf, .docx, .rtf or .txt a part at a time, or a .jpg or .png as an image. A video, or a PDF that is only scanned pages, cannot be read; you open it on the case page. |
+| Respond | `respond_to_case` submits your turn: the respondent's first response, the claimant's reply, or the respondent's counter response. A submitted round is final, so the assistant shows you the whole response and asks before it submits. |
+| Follow it | `get_case_updates` says what has happened since you last asked and where each case stands. |
+| Read the award | `get_decision` returns the award once the case is decided. |
+
+If you were invited to a consent case, give the assistant the link from the invitation email: `claim_consent_case` opens it and `answer_consent_case` records your accept or reject. Either answer is final.
+
 ## How it works
 
 The plugin points at DecisionLayer's hosted MCP server, `https://www.decisionlayer.ai/mcp`, which lives inside the DecisionLayer application. DecisionLayer is also the OAuth 2.1 authorization server:
@@ -82,7 +103,7 @@ The plugin points at DecisionLayer's hosted MCP server, `https://www.decisionlay
 
 Clicking **Allow** creates a *grant* for your account and that app. Access tokens last an hour, refresh tokens thirty days (rotated on use), and every token dies with its grant. Each MCP tool calls the public DecisionLayer API as you, so a case filed from ChatGPT is identical to one filed with an API key: it is owned by your account and goes through the same validation, approvals and monthly limits.
 
-The eight tools:
+The sixteen tools. The first eight bring a case; the rest carry one forward and were added in 1.1 without changing the first eight:
 
 | Tool | What it does | Returns |
 | --- | --- | --- |
@@ -94,10 +115,18 @@ The eight tools:
 | `run_simulation` | Starts a simulation (`POST /api/v1/simulations`) | `id`, `status`, `page_url` |
 | `get_simulation` | Waits up to `wait_seconds` (default 30, at most 50) for a simulation and returns the award (`GET /api/v1/simulations/{id}` and `/result`) | `status`, `page_url`, and once ready the award `text` and, for 30 days, `pdf_url` |
 | `send_feedback` | Sends a note to the DecisionLayer team, for example when a tool call failed. The assistant shows you the note and sends it only if you agree (`POST /api/v1/feedback`) | An `fb_` ID |
+| `list_cases` | Lists your cases and consent cases; `only_action_required` lists just the ones waiting on you (`GET /api/v1/cases` and `/consent-cases`) | `cases`, `more`, `dashboard_url` |
+| `get_case_record` | Returns what was filed on a case and whether it is your turn (`GET /api/v1/cases/{id}` and `/responses`) | The question and amount, `filings` (the claim, then each round, with their files), `your_turn`, `open_round`, `response_fields` |
+| `get_case_file` | Reads one file from a case (`GET /api/v1/cases/{id}/files` and `/files/{file_id}`) | `text` for one `part` of `parts`, or an image; `readable: false` with a `note` and `view_url` otherwise |
+| `respond_to_case` | Submits your turn on a case (`POST /api/v1/cases/{id}/responses`) | The `round` submitted, and the case's `status`, `next_action`, `action_url`, `waiting_on`, `status_summary` |
+| `get_case_updates` | Reports what happened on your cases, or on one (`GET /api/v1/events`, `/cases/{id}/events`, `/consent-cases/{id}/events`) | `updates`, `cases` (where each stands now), `cursor`, `more` |
+| `get_decision` | Returns the award once a case is decided (`GET /api/v1/cases/{id}/decision`) | `published`, the award `text`, `pdf_url` |
+| `claim_consent_case` | Opens a consent case you were invited to, from the invitation link (`POST /api/v1/consent-cases/claim`) | The same as `get_case` |
+| `answer_consent_case` | Accepts or rejects a consent case as the respondent (`POST /api/v1/consent-cases/{id}/accept` or `/reject`) | The same as `get_case` |
 
-Each tool declares its result as an `outputSchema` and returns only the IDs, statuses and links the next step needs; the REST API returns the full objects. `file_case`, `file_consent_case` and `run_simulation` are annotated as destructive, because a filing reaches the other party once you sign and pay and a simulation award is published, so clients that honour annotations ask you before running them.
+Each tool declares its result as an `outputSchema` and returns only the IDs, statuses and links the next step needs; the REST API returns the full objects. `file_case`, `file_consent_case`, `run_simulation`, `respond_to_case` and `answer_consent_case` are annotated as destructive, because a filing reaches the other party once you sign and pay, a simulation award is published, and a submitted round or an answer to a consent case cannot be changed, so clients that honour annotations ask you before running them.
 
-Those three tools also require an `idempotency_key`, sent as the API's `Idempotency-Key`. The assistant picks a new value for each request and sends the same value when it retries one that failed or timed out, so the retry returns the first result instead of filing again. If the first attempt is still running, the tool says to wait a minute and retry with the same key. If the key was already used with different arguments, the tool says the first attempt may have gone through and asks you to check your dashboard before filing with a new key. A retry that includes a file of 8 MiB or more always ends that way, because the file is uploaded again.
+The filing, simulation and response tools also require an `idempotency_key`, sent as the API's `Idempotency-Key`. The assistant picks a new value for each request and sends the same value when it retries one that failed or timed out, so the retry returns the first result instead of filing again. If the first attempt is still running, the tool says to wait a minute and retry with the same key. If the key was already used with different arguments, the tool says the first attempt may have gone through and asks you to check your dashboard before filing with a new key. A retry that includes a file of 8 MiB or more always ends that way, because the file is uploaded again.
 
 Signing, payment and identity verification have no tool. When a filing needs one of them, the tool result carries the web link (`action_url`, for both kinds of case) and the assistant hands it to you.
 
@@ -108,16 +137,17 @@ Documents attached in the chat or given as an HTTPS link are passed as a file ob
 | `file_case` | `contract_file`, `evidence` | `contract_text`, `evidence_text` |
 | `file_consent_case` | `contract_files`, `supporting_documents` | `contract_text`, `supporting_text` |
 | `run_simulation` | `contract_file`, `plaintiff_documents`, `respondent_documents`, `plaintiff_rebuttal_documents`, `respondent_rebuttal_documents` | `governing_contract`, and the arguments and rebuttals themselves |
+| `respond_to_case` | `evidence`, `evidence_response_files`, `counterclaim_files` | `evidence_text`, and the argument itself |
 
 Contracts may be `.pdf`, `.docx`, `.rtf` or `.txt`; evidence may also be `.jpg`, `.jpeg`, `.png`, `.mp4`, `.mov` or `.avi`. Each file can be up to 100 MiB, and one tool call takes at most 10 files, 256 MiB in total. Downloads reach only public addresses.
 
-Three skills guide the conversation: `file-arbitration-case`, `file-consent-case` and `simulate-arbitration-case`.
+Five skills guide the conversation: `file-arbitration-case`, `file-consent-case`, `simulate-arbitration-case`, `respond-to-arbitration-case` and `follow-arbitration-case`.
 
 The server side (authorization server, consent page, MCP endpoint and tools) is in the DecisionLayer application repository, under `app/services/oauth_server.py`, `app/services/mcp_server.py`, `app/services/mcp_tools.py` and `app/routers/oauth.py`.
 
 ## Running the tools locally with an API key
 
-For development, this repository also contains a small stdio MCP server (`src/`, bundled to `local/server.mjs`) that offers the same eight tools, with the same arguments and results, against the public API with an API key instead of a sign-in. It lives outside the plugin folder, so people who install the plugin never download it, and it is not what the plugin uses.
+For development, this repository also contains a small stdio MCP server (`src/`, bundled to `local/server.mjs`) that offers the first eight tools (account, filing, case status, simulation and feedback), with the same arguments and results, against the public API with an API key instead of a sign-in. The eight tools that carry a case forward are on the hosted server only; with an API key, call the REST API for those. It lives outside the plugin folder, so people who install the plugin never download it, and it is not what the plugin uses.
 
 1. Create a key at `https://www.decisionlayer.ai/settings/api-keys` (or a sandbox test key at `/settings/test-api-keys`; test filings skip signing and payment, contact nobody, and never produce an award, and test keys cannot run simulations).
 2. Save it: `export DECISIONLAYER_API_KEY=dvarb_...`, or write it to `~/.config/decisionlayer/api_key`.
@@ -134,7 +164,7 @@ codex mcp add decisionlayer-local --env DECISIONLAYER_API_KEY=dvarb_... -- node 
 npm run inspect
 ```
 
-Leave the `-e` or `--env` flag out to read the key from the key file instead. The three skills in `plugins/decisionlayer/skills/` work with the local server as well.
+Leave the `-e` or `--env` flag out to read the key from the key file instead. The three filing and simulation skills in `plugins/decisionlayer/skills/` work with the local server as well; `respond-to-arbitration-case` and `follow-arbitration-case` need the hosted server.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -164,7 +194,7 @@ plugins/decisionlayer/
   .claude-plugin/plugin.json       the same manifest for Claude Code
   mcp.json                         points Codex at the hosted MCP server
   .mcp.json                        points Claude Code at the hosted MCP server
-  skills/                          the three skills and the sample case
+  skills/                          the five skills and the sample case
   assets/                          logo and icon
 clients/                           configurations for Claude Code, Claude Desktop, Cursor, VS Code
 local/server.mjs                   the local server for use with an API key (generated by npm run build, committed)
@@ -175,9 +205,22 @@ test/                              end-to-end tests of the local server, and pac
 
 `local/server.mjs` is a single bundled file so the local mode runs straight from a clone with no `npm install`. After changing anything in `src/`, run `npm run build` and commit the result. Keep the version in `package.json`, all three `plugin.json` files and `src/config.ts` the same; the tests check all of them. CI fails if the committed bundle differs from what `src/` builds to.
 
+## Review account and sample data
+
+OpenAI's reviewers run the five positive and three negative cases in `extensions["com.openai"].review` of the plugin manifest, signed in as the review account. Two of them need data that a new account does not have, so before a package is submitted the review account must be a party to two sample cases, both built from the made-up dispute in [sample-case.md](plugins/decisionlayer/skills/simulate-arbitration-case/references/sample-case.md):
+
+| Sample case | State the review account must find | Used by |
+| --- | --- | --- |
+| Waiting for a response | The review account is the respondent (the landlord, Riley Tanaka, in the sample dispute). It has claimed the case and signed the arbitration terms, and the case is waiting for the respondent's first response. The claim carries the sample lease as its contract file, as a .txt or a PDF with a text layer, so `get_case_file` can return it. | "Cases and what changed", "Read a case and respond" |
+| Decided | The review account is a party, all rounds are on record, and the award is published. | "Cases and what changed", "Read the award" |
+
+The respond case submits a round, and a round can be submitted once. **Reset the first sample case before every review**, including a second review of the same package: afterwards the case is waiting on identity verification, not on a response. Its expected behavior says what the reviewer sees if the round is already on record, but a fresh case is what demonstrates the tool.
+
+The other three positive cases need nothing prepared: the simulation, the consent case (which the reviewer does not sign or pay for, so no invitation is sent), and the listing, which reports the consent case just created. Run all eight cases as the review account before submitting, and record the walkthrough the manifest's `demo_recording_url` points at from the same cases.
+
 ## Scope
 
-This version brings cases. It does not submit later-round responses, act for the respondent, sign, pay, list cases or read a decided award. The REST API covers all of those with an API key (`/api/v1/cases/{id}/responses`, `/claim`, `/sign`, `/decision`, the `/events` change feed and the list endpoints); see the [API reference](https://www.decisionlayer.ai/api/docs). Nothing the assistant says is legal advice.
+This version brings a case and carries it to the award, for either party. It does not sign, pay or verify identity, and it does not claim a case filed against you: those are done by you on the DecisionLayer website. It cannot read a video or a PDF that is only scanned pages, or the files on a consent case. Listing simulations, hosted signing sessions and paging past the 50 most recent cases are in the REST API with an API key; see the [API reference](https://www.decisionlayer.ai/api/docs). Nothing the assistant says is legal advice.
 
 ## License
 

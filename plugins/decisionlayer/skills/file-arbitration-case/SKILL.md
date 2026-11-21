@@ -81,5 +81,6 @@ If a tool fails in a way you cannot fix, offer to report it with `send_feedback`
 
 ## Limits
 
-- This plugin files cases. It does not submit later-round responses, sign, pay, read a decided award, or act for the respondent. Those are done on the DecisionLayer website, or with the REST API and an API key.
+- This skill files the case. When the respondent has answered, the user's reply is submitted with the `respond-to-arbitration-case` skill; status, updates, the filings and the award are in the `follow-arbitration-case` skill.
+- No tool signs, pays or verifies identity. Those are done by the user on the DecisionLayer website, at the link a tool returns.
 - Do not give legal advice or predict the outcome. You may explain how DecisionLayer's process works.
