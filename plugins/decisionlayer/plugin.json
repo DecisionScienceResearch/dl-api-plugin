@@ -38,8 +38,7 @@
           "Start a consent arbitration case with DecisionLayer"
         ],
         "composerIcon": "./assets/icon.svg",
-        "logo": "./assets/logo.svg",
-        "screenshots": []
+        "logo": "./assets/logo.svg"
       },
       "review": {
         "demo_recording_url": "https://drive.google.com/file/d/1T1KYHOZISFIVXDjlIRnwJ21zWNfeDKtZ/view?usp=sharing",

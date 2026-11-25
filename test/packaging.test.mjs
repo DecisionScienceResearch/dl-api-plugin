@@ -78,7 +78,6 @@ test("every path a manifest names exists", () => {
     codex.mcpServers,
     codex.interface.composerIcon,
     codex.interface.logo,
-    ...codex.interface.screenshots,
     portable.composerIcon,
     portable.logo,
   ];

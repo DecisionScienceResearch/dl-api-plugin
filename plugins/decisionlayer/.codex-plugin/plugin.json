@@ -37,8 +37,7 @@
       "Start a consent arbitration case with DecisionLayer"
     ],
     "composerIcon": "./assets/icon.svg",
-    "logo": "./assets/logo.svg",
-    "screenshots": []
+    "logo": "./assets/logo.svg"
   },
   "extensions": {
     "com.openai": {
